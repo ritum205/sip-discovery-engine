@@ -1271,7 +1271,7 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
         ("Cliff share of tenure-stated churn", "=IFERROR(B7/B6,0)", "0.0%"),
         ("Addressable by Product/UX & FinTech nudges", f'=COUNTIF({PREV},"High*")', "0"),
         ("Addressable share", "=IFERROR(B9/B5,0)", "0.0%"),
-        ("Avg monthly SIP at churn (INR)", f"=IFERROR(AVERAGE({AMT}),0)", "₹#,##0"),
+    
     ]
     for i, (label, formula, fmt) in enumerate(kpis):
         r = 5 + i
