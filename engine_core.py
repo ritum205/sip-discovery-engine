@@ -1156,7 +1156,8 @@ EMERALD = "00D09C"
 LIGHT = "F4F6F8"
 
 
-def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = None) -> bytes:
+def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = None,
+                             include_roadmap: bool = True) -> bytes:
     """Build the 3-sheet PM Discovery Workbook and return it as bytes.
     Summary metrics are live Excel formulas over the dataset sheet, so
     filtering or editing rows in Excel recalculates the deck numbers."""
@@ -1345,38 +1346,39 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
             if c == 3:
                 cell.number_format = "0.0%"
 
-    # ---------------- Sheet 3: roadmap ----------------
-    s3 = wb.create_sheet("PM Growth Roadmap")
-    s3.sheet_view.showGridLines = False
-    s3["A1"] = "PM Growth Roadmap — Retention Features (compliance-first)"
-    s3["A1"].font = title_font
-    s3["A2"] = ("Design principles: no fund/stock recommendations · no FOMO, fear or urgency nudges · "
-                "cancel always available in one tap · factual, disclaimed historical context only.")
-    s3["A2"].font = sub_font
-    s3.merge_cells("A2:I2")
-    cols = ["Priority", "Feature", "Problem Themes Addressed", "Evidence: Records in Dataset",
-            "User Problem", "Solution Spec", "Compliance Guardrails", "Success Metric (North-Star)", "Phase / Timeline"]
-    for c, (lab, w) in enumerate(zip(cols, [9, 26, 28, 14, 45, 60, 45, 36, 30]), start=1):
-        cell = s3.cell(row=4, column=c, value=lab)
-        cell.font, cell.fill, cell.alignment, cell.border = hdr_font, hdr_fill, center, box
-        s3.column_dimensions[get_column_letter(c)].width = w
-    s3.row_dimensions[4].height = 32
-    for i, item in enumerate(ROADMAP):
-        r = 5 + i
-        evidence = "=" + "+".join(f'COUNTIF({THEME},"{t}")' for t in item["Themes"])
-        vals = [item["Priority"], item["Feature"], ", ".join(item["Themes"]), evidence,
-                item["User Problem"], item["Solution Spec"], item["Guardrails"],
-                item["Success Metric"], item["Phase"]]
-        for c, v in enumerate(vals, start=1):
-            cell = s3.cell(row=r, column=c, value=v)
-            cell.font, cell.border, cell.alignment = body, box, wrap_top
-        s3.cell(row=r, column=2).font = bold
-        pcell = s3.cell(row=r, column=1)
-        pcell.alignment = center
-        pcell.font = Font(name=F, size=10, bold=True, color="FFFFFF" if item["Priority"] == "P0" else NAVY)
-        pcell.fill = PatternFill("solid", fgColor=NAVY if item["Priority"] == "P0" else (EMERALD if item["Priority"] == "P1" else LIGHT))
-        s3.row_dimensions[r].height = 120
-    s3.freeze_panes = "C5"
+    # ---------------- Sheet 3: roadmap (optional) ----------------
+    if include_roadmap:
+        s3 = wb.create_sheet("PM Growth Roadmap")
+        s3.sheet_view.showGridLines = False
+        s3["A1"] = "PM Growth Roadmap — Retention Features (compliance-first)"
+        s3["A1"].font = title_font
+        s3["A2"] = ("Design principles: no fund/stock recommendations · no FOMO, fear or urgency nudges · "
+                    "cancel always available in one tap · factual, disclaimed historical context only.")
+        s3["A2"].font = sub_font
+        s3.merge_cells("A2:I2")
+        cols = ["Priority", "Feature", "Problem Themes Addressed", "Evidence: Records in Dataset",
+                "User Problem", "Solution Spec", "Compliance Guardrails", "Success Metric (North-Star)", "Phase / Timeline"]
+        for c, (lab, w) in enumerate(zip(cols, [9, 26, 28, 14, 45, 60, 45, 36, 30]), start=1):
+            cell = s3.cell(row=4, column=c, value=lab)
+            cell.font, cell.fill, cell.alignment, cell.border = hdr_font, hdr_fill, center, box
+            s3.column_dimensions[get_column_letter(c)].width = w
+        s3.row_dimensions[4].height = 32
+        for i, item in enumerate(ROADMAP):
+            r = 5 + i
+            evidence = "=" + "+".join(f'COUNTIF({THEME},"{t}")' for t in item["Themes"])
+            vals = [item["Priority"], item["Feature"], ", ".join(item["Themes"]), evidence,
+                    item["User Problem"], item["Solution Spec"], item["Guardrails"],
+                    item["Success Metric"], item["Phase"]]
+            for c, v in enumerate(vals, start=1):
+                cell = s3.cell(row=r, column=c, value=v)
+                cell.font, cell.border, cell.alignment = body, box, wrap_top
+            s3.cell(row=r, column=2).font = bold
+            pcell = s3.cell(row=r, column=1)
+            pcell.alignment = center
+            pcell.font = Font(name=F, size=10, bold=True, color="FFFFFF" if item["Priority"] == "P0" else NAVY)
+            pcell.fill = PatternFill("solid", fgColor=NAVY if item["Priority"] == "P0" else (EMERALD if item["Priority"] == "P1" else LIGHT))
+            s3.row_dimensions[r].height = 120
+        s3.freeze_panes = "C5"
 
     wb.active = 1  # open on the summary sheet
     buf = io.BytesIO()
