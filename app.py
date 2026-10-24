@@ -175,261 +175,420 @@ people investors investor users user sip sips mutual fund funds their they them 
 main biggest common complaints complaint issues issue problems problem say says said tell me show give list reasons
 reason cause causes driving drive leading lead groww app apps please any some more many much can could would should
 i we you our your my from by as at be been have has had into than then there here also just get got points point
-friction explain work works between difference""".split())
+friction explain work works between difference better best good bad worse worst than more less vs versus
+compare comparison really actually way ways thing things know need want like""".split())
 
 SUGGESTED_QUESTIONS = [
     "Why do people cancel their SIP?",
     "What are the top bank auto-debit friction points?",
-    "When do most SIPs stop?",
-    "Pause vs cancel — what's the difference?",
+    "SIP vs lumpsum?",
+    "Should I pause or cancel my SIP?",
     "How can Groww reduce SIP churn?",
 ]
 
-# Built-in domain knowledge for conceptual questions. General, educational and
-# non-advisory: no scheme recommendations, no return promises, no urgency.
+# ---------------------------------------------------------------------------
+# SIP & wealth domain engine — built-in, zero-API-key knowledge.
+# Each topic answers in three parts: explanation & trade-offs, investor
+# behaviour insight, and Groww in-app best practice. Content is general and
+# educational: no scheme recommendations, no return promises, no urgency.
+# Figures that can change (tax, limits) carry their "as of" context.
+# ---------------------------------------------------------------------------
 KNOWLEDGE_BASE = [
     {
+        "topic": "SIP vs lumpsum",
+        "keys": ["lumpsum", "lump sum", "lump-sum", "one time", "one-time", "onetime", "all at once", "stp",
+                 "systematic transfer"],
+        "weight": 3,
+        "themes": ["Market Correction Panic", "Disappointment Valley"],
+        "short": "A lumpsum puts the whole amount into the market at once; a SIP spreads it over regular "
+                 "instalments. The trade-off is time in the market versus timing risk and regret.",
+        "points": [
+            "**Lumpsum:** all money is exposed from day one, so in rising markets it tends to end ahead. Studies of "
+            "historical data, mostly from developed markets, find lumpsum beating staggered investing roughly "
+            "two-thirds of the time. The cost is full exposure if the market falls soon after.",
+            "**SIP:** suits regular income, needs no large sum upfront, and averages the purchase price across "
+            "market levels. It lowers the risk of investing everything at a peak, but money waiting to be invested "
+            "earns less in rising markets.",
+            "**Middle path for a large sum:** park it in a low-volatility fund and move it gradually into equity "
+            "through a Systematic Transfer Plan (STP).",
+            "**The deciding factor is usually cash-flow, not maths:** most first-time investors invest from monthly "
+            "income, so a SIP is the natural fit.",
+        ],
+        "behaviour": "Regret is asymmetric: investing a lumpsum just before a fall feels far worse than missing "
+                     "gains by going slowly. That's why many people prefer SIPs even when lumpsum has the better "
+                     "average outcome. SIP investors still churn when early returns look flat, because the "
+                     "averaging benefit is invisible in year one.",
+        "practice": [
+            "Offer a neutral SIP / lumpsum / STP comparison based on the investor's own amount and horizon, with "
+            "historical ranges rather than projected returns.",
+            "Show ‘units bought at each price’ for SIPs so the averaging benefit becomes visible.",
+            "Never frame either option with urgency (‘invest before the market rises’).",
+        ],
+    },
+    {
         "topic": "Pausing vs cancelling a SIP",
-        "keys": ["pause", "pausing", "cancel", "stop", "stopping", "skip", "restart", "resume", "better"],
+        "keys": ["pause", "pausing", "cancel", "cancelling", "stop", "stopping", "skip", "restart", "resume"],
         "themes": ["Liquidity Shortage", "Market Correction Panic"],
-        "short": "Pausing skips a few instalments and keeps the SIP set up; cancelling ends all future instalments. "
-                 "In both cases, the units already bought stay invested.",
+        "short": "Pausing skips a few instalments and keeps the SIP set up; cancelling ends all future "
+                 "instalments. In both cases, the units already bought stay invested.",
         "points": [
-            "**Pause:** future instalments are skipped for a chosen number of months, then the SIP resumes on its own. "
-            "The registration and bank mandate stay in place. How long you can pause depends on the fund house and platform.",
-            "**Cancel:** no more instalments are debited. The existing units stay in the folio until redeemed. "
-            "Restarting later usually means setting up a new SIP and sometimes a new mandate.",
-            "**Missed instalments:** a fund house typically doesn't fine you for one, but the bank may charge a fee if a "
-            "debit fails for low balance. Many fund houses cancel a SIP after a few consecutive failed debits.",
-            "**Redeeming** is different again: it sells units and takes money out of the investment.",
-            "**Which is better?** It depends on why. For a temporary cash crunch or short-term worry, a pause keeps "
-            "the habit and set-up intact. If the goal has changed or the SIP was never right for the investor, "
-            "cancelling is a reasonable, deliberate choice. Neither is universally better.",
+            "**Pause:** future instalments are skipped for a chosen number of months, then the SIP resumes on its "
+            "own. The registration and bank mandate stay in place. Pause limits depend on the fund house and "
+            "platform.",
+            "**Cancel:** no more instalments are debited. Existing units stay in the folio until redeemed. "
+            "Restarting means setting up a new SIP and sometimes a new mandate.",
+            "**Redeem** is different again: it sells units and withdraws money.",
+            "**Which is better?** For a temporary cash crunch or short-term worry, a pause keeps the habit and "
+            "set-up intact. If the goal has changed or the SIP was never a fit, cancelling is a reasonable, "
+            "deliberate choice. Neither is universally better.",
         ],
-        "product": "When ‘continue’ and ‘cancel’ are the only visible options, a temporary cash crunch turns into "
-                   "permanent churn. Showing pause or step-down at the moment of cancellation keeps the habit alive "
-                   "without pressure, as long as cancel stays one tap away.",
-    },
-    {
-        "topic": "Market volatility and SIPs",
-        "keys": ["volatil", "crash", "correction", "fall", "dip", "market down", "bear", "averaging", "rupee cost",
-                 "nav", "units"],
-        "themes": ["Market Correction Panic"],
-        "short": "A SIP invests a fixed amount on a schedule. When prices fall, the same amount buys more units, "
-                 "which lowers the average cost per unit over time.",
-        "points": [
-            "**Rupee-cost averaging:** buying at many price points smooths the entry price. It doesn't guarantee profit "
-            "or protect against loss.",
-            "**Drawdowns are normal for equity:** Indian equity indices have had several sharp corrections that later "
-            "recovered. Past patterns don't guarantee future outcomes.",
-            "**Stopping during a fall** means no new units are bought at the lower prices. That's the opposite of what the "
-            "SIP mechanism is designed for, though every investor's situation differs.",
-            "**Short holding periods** carry the widest range of outcomes for equity funds. The range narrows as the "
-            "holding period lengthens.",
+        "behaviour": "People rarely intend to quit investing for good. Most cancellations are reactions to a "
+                     "short-term event: cash pressure, a scary week in the market, a failed debit. When the only "
+                     "visible exit is ‘Cancel’, a temporary decision becomes permanent, and the effort of "
+                     "restarting (status-quo bias) keeps it that way.",
+        "practice": [
+            "On the cancel screen, show Pause (1–3 months) and Step down amount alongside Cancel. Cancel stays "
+            "one tap away.",
+            "Auto-resume paused SIPs with a single neutral reminder a few days before.",
+            "Track the pause-instead-of-cancel ratio and the reactivation rate.",
         ],
-        "product": "First-time investors often experience their first drawdown as a permanent loss. Neutral, factual "
-                   "context (historical drawdown and recovery ranges, units accumulated) helps more than any nudge. "
-                   "Avoid ‘buy the dip’ or urgency language.",
-    },
-    {
-        "topic": "Investor psychology behind SIP drop-offs",
-        "keys": ["psycholog", "behavio", "bias", "emotion", "loss aversion", "herd", "patience", "impatien", "mindset",
-                 "feel", "regret"],
-        "themes": ["Disappointment Valley", "Market Correction Panic", "Social Influence"],
-        "short": "Most SIP drop-offs are driven less by the product than by predictable behavioural biases, "
-                 "especially in the first year.",
-        "points": [
-            "**Loss aversion:** a loss feels about twice as painful as an equal gain feels good, so a red portfolio "
-            "triggers action.",
-            "**Myopic loss aversion:** checking the portfolio often makes normal ups and downs feel like constant losses.",
-            "**Anchoring:** new investors compare year-one equity returns with FD or savings rates they know well.",
-            "**Recency bias and herding:** recent news, peers or creators shape decisions more than the original plan.",
-            "**Present bias:** today's spending needs beat a distant goal, especially if no goal was ever set.",
-        ],
-        "product": "Goal-linking at setup, fewer red-number shocks on the portfolio screen, and calm factual context at "
-                   "stress moments address these biases without manipulation.",
-    },
-    {
-        "topic": "Why first-year SIP returns look flat",
-        "keys": ["xirr", "return", "flat", "fd", "fixed deposit", "first year", "one year", "1 year", "negative",
-                 "cagr", "absolute return"],
-        "themes": ["Disappointment Valley"],
-        "short": "In year one, most of the money has been invested for only a few months, so even good market "
-                 "periods produce small absolute gains.",
-        "points": [
-            "**Time-weighting:** with 12 monthly instalments, the average rupee has been invested for about 6 months "
-            "at month 12, and the latest instalment for almost none.",
-            "**XIRR** annualises returns across instalments with different dates. Over short periods it can swing "
-            "sharply and be misleading.",
-            "**FD comparisons** set an anchor of steady, guaranteed growth that equity is not designed to match "
-            "in the short term.",
-        ],
-        "product": "Showing units accumulated and the typical range of outcomes by holding period gives context "
-                   "without promising returns.",
-    },
-    {
-        "topic": "How SIP auto-debit works (mandates)",
-        "keys": ["mandate", "nach", "enach", "e-nach", "autopay", "auto pay", "auto-debit", "auto debit", "debit",
-                 "bounce", "bank", "upi", "limit", "limits", "otp"],
-        "themes": ["Bank & Auto-Debit Friction"],
-        "short": "A SIP is debited through a standing instruction on the investor's bank account (e-NACH or UPI "
-                 "AutoPay). Most failures come from timing, balance or a broken or expired mandate.",
-        "points": [
-            "**Set-up:** the investor authorises a mandate with a maximum amount. The platform then debits each "
-            "instalment on the SIP date, as long as it is within that maximum. Raising the SIP above the mandate "
-            "limit needs a new or modified mandate.",
-            "**e-NACH** mandates are registered through net banking or a debit card and typically allow higher "
-            "maximum amounts. Registration can take a few working days.",
-            "**UPI AutoPay limits (2026 rules):** after the first authenticated payment, recurring debits go through "
-            "without a fresh OTP up to ₹15,000 per transaction generally, and up to ₹1 lakh for mutual fund "
-            "subscriptions, insurance premiums and credit card bills. Banks must send a pre-debit notice at least "
-            "24 hours before each debit. Limits change, so check current RBI and NPCI rules.",
-            "**Low balance on the debit date** causes a failed instalment. Banks may charge a return or bounce fee.",
-            "**Bank-account changes, mandate expiry or limit mismatches** silently break future debits unless the "
-            "investor re-registers.",
-            "**Repeated failures:** many fund houses cancel a SIP after a few consecutive failed instalments, often "
-            "without the investor noticing.",
-        ],
-        "product": "Pre-debit reminders, an easy SIP-date change after typical salary credit, and a mandate health "
-                   "check with guided re-registration directly reduce involuntary churn.",
-    },
-    {
-        "topic": "Fund overlap and diversification",
-        "keys": ["overlap", "diversif", "too many funds", "multiple funds", "same category", "consolidat", "portfolio"],
-        "themes": ["Same-Category Overlap"],
-        "short": "Holding several funds in the same category often means owning many of the same stocks. Adding funds "
-                 "doesn't automatically add diversification.",
-        "points": [
-            "Funds in the same category follow similar mandates, so their top holdings frequently overlap.",
-            "When investors discover the overlap, they often cancel several SIPs at once rather than consolidating.",
-            "Diversification is driven by category, asset class and strategy mix, not the number of funds.",
-        ],
-        "product": "A category-level overlap view of the investor's own holdings, plus a guided ‘merge into one SIP’ "
-                   "flow, turns a cancellation moment into a consolidation. The investor chooses which SIP to keep; "
-                   "the platform does not recommend a scheme.",
-    },
-    {
-        "topic": "Goal-based investing and onboarding",
-        "keys": ["goal", "onboard", "purpose", "plan", "beginner", "first time", "first-time", "new investor", "start"],
-        "themes": ["Directionless Onboarding"],
-        "short": "SIPs started without a goal or horizon have nothing to anchor them when motivation dips or "
-                 "returns look flat.",
-        "points": [
-            "A named goal (an emergency buffer, a home deposit, education) with a horizon gives a reason to continue.",
-            "Fast onboarding gets the first SIP live quickly but rarely connects it to a life outcome.",
-            "Milestone check-ins against the investor's own goal reinforce the habit without promoting products.",
-        ],
-        "product": "An optional, skippable goal step at SIP creation and neutral milestone updates at M3, M6, M9 "
-                   "and M12.",
-    },
-    {
-        "topic": "Liquidity, emergencies and SIP sizing",
-        "keys": ["emergency", "liquidity", "job", "salary", "afford", "cash", "income", "sizing", "amount", "budget",
-                 "step down", "step-down", "step up", "top-up"],
-        "themes": ["Liquidity Shortage"],
-        "short": "Many SIPs stop because of a cash-flow shock, not because the investor has given up on investing.",
-        "points": [
-            "SIPs sized on a peak-month income leave no buffer for variable earnings or one-off expenses.",
-            "Without an emergency fund, the SIP corpus becomes the emergency fund and gets redeemed.",
-            "**Step-down / step-up:** reducing or increasing the instalment amount adapts the SIP to income "
-            "instead of ending it.",
-        ],
-        "product": "Pause and step-down options at the cancellation moment, plus SIP-amount guidance based on the "
-                   "investor's own stated budget, keep the habit through temporary stress.",
-    },
-    {
-        "topic": "Lock-ins, exit loads and redemption timing",
-        "keys": ["exit load", "lock-in", "lock in", "elss", "redeem", "redemption", "withdraw"],
-        "themes": ["Liquidity Shortage", "Disappointment Valley"],
-        "short": "Some funds restrict or charge for early withdrawals, and holding period affects how gains are taxed. "
-                 "Check the scheme documents and current tax rules.",
-        "points": [
-            "**ELSS** (tax-saving) funds have a three-year lock-in, applied to each SIP instalment separately.",
-            "**Exit loads:** many equity funds charge a small exit load if units are redeemed within a set period "
-            "(often around a year). The exact terms are in each scheme's documents.",
-            "**Tax:** gains are taxed differently depending on fund type and holding period. Rules change, so "
-            "investors should check current regulations.",
-        ],
-        "product": "Clear, factual disclosure of lock-in and exit-load dates on the redemption screen prevents "
-                   "surprises that erode trust.",
     },
     {
         "topic": "What a SIP is and how it works",
-        "keys": ["what is a sip", "what is sip", "systematic investment", "how does sip", "how sip works", "sip work",
-                 "sip mean", "sip basics"],
+        "keys": ["what is a sip", "what is sip", "systematic investment", "how does sip", "how sip works",
+                 "sip work", "sip mean", "sip basics"],
+        "weight": 2,
         "themes": [],
         "short": "A Systematic Investment Plan (SIP) invests a fixed amount in a mutual fund at regular intervals, "
                  "usually monthly, through an automatic bank debit.",
         "points": [
-            "Each instalment buys units at that day's NAV (net asset value), so the number of units varies "
-            "with the price.",
+            "Each instalment buys units at that day's NAV (net asset value), so the number of units varies with "
+            "the price.",
             "The investor chooses the amount, frequency, date and duration, and can usually pause, modify or "
-            "cancel the SIP.",
-            "Because it is automatic, a SIP builds a habit and removes the need to time the market. Like any "
-            "market-linked investment, returns are not guaranteed.",
+            "cancel.",
+            "Automation builds a habit and removes the need to time the market. Returns are market-linked and "
+            "not guaranteed.",
         ],
-        "product": "The automation that makes SIPs effective also makes failures silent, so clear status, receipts "
-                   "and pre-debit reminders matter for trust.",
+        "behaviour": "Automation turns saving into a default, which is the most powerful behavioural lever there "
+                     "is. The flip side is that people also stop paying attention, so failures and doubts surface "
+                     "suddenly rather than gradually.",
+        "practice": [
+            "Pair automation with visibility: instalment receipts, units bought and a clear SIP status timeline.",
+            "Send a pre-debit reminder so the debit never surprises the investor.",
+        ],
+    },
+    {
+        "topic": "Market crashes, volatility and SIPs",
+        "keys": ["volatil", "crash", "correction", "fall", "falling", "dip", "market down", "bear", "averaging",
+                 "rupee cost"],
+        "themes": ["Market Correction Panic"],
+        "short": "A SIP invests a fixed amount on a schedule. When prices fall, the same amount buys more units, "
+                 "lowering the average cost per unit over time.",
+        "points": [
+            "**Rupee-cost averaging** smooths the entry price across market levels. It doesn't guarantee profit or "
+            "protect against loss.",
+            "**Drawdowns are normal for equity.** Indian indices have seen several sharp corrections that later "
+            "recovered, but past patterns don't guarantee future outcomes.",
+            "**Stopping during a fall** means no units are bought at the lower prices, which is the part the SIP "
+            "mechanism relies on.",
+            "**Short holding periods** carry the widest range of outcomes. The range narrows as the holding period "
+            "lengthens.",
+        ],
+        "behaviour": "Loss aversion (losses hurt about twice as much as equal gains feel good) peaks during a "
+                     "first-ever drawdown. News and social feeds amplify it, while the app shows a single red "
+                     "number with no context.",
+        "practice": [
+            "During market-wide falls, show factual context: historical drawdown and recovery ranges and units "
+            "accumulated. No ‘buy the dip’ prompts and no urgency.",
+            "Lead the portfolio screen with invested amount and units, not just today's P&L.",
+            "Measure SIP stops during weeks with a drawdown above 5%.",
+        ],
+    },
+    {
+        "topic": "What XIRR is and why first-year returns look flat",
+        "keys": ["xirr", "cagr", "absolute return", "return", "returns", "flat", "fd", "fixed deposit",
+                 "first year", "one year", "1 year", "negative"],
+        "themes": ["Disappointment Valley"],
+        "short": "XIRR is an annualised return that accounts for each instalment's date and amount. In year one, "
+                 "most of the money has been invested for only a few months, so gains look small.",
+        "points": [
+            "**XIRR vs CAGR:** CAGR suits a single investment; XIRR handles many cash-flows on different dates, "
+            "which is why it's used for SIPs.",
+            "**Time-weighting:** at month 12, the average rupee in a monthly SIP has been invested for about six "
+            "months, and the latest instalment for almost none.",
+            "**Short periods mislead:** XIRR can swing sharply over a few months. Annualising a small gain or "
+            "loss exaggerates it.",
+            "**FD comparisons** set an anchor of steady, guaranteed growth that equity isn't designed to match "
+            "in the short term.",
+        ],
+        "behaviour": "Anchoring to FD rates plus impatience creates a ‘disappointment valley’ around months 9–14. "
+                     "The investor has paid in long enough to expect results but not long enough for compounding "
+                     "to show.",
+        "practice": [
+            "Show units accumulated and historical outcome ranges by holding period next to returns.",
+            "Explain XIRR in one line where it's displayed, and avoid annualising very short periods.",
+        ],
     },
     {
         "topic": "Compounding and the cost of interrupting a SIP",
-        "keys": ["compound", "compounding", "long term", "long-term", "power of", "interrupt", "missing", "missed",
-                 "cost of stopping", "how much", "wealth"],
+        "keys": ["compound", "compounding", "long term", "long-term", "power of", "interrupt", "cost of stopping",
+                 "wealth", "how much will"],
         "themes": ["Disappointment Valley", "Liquidity Shortage"],
-        "short": "Compounding means gains themselves start earning returns, so most of a long SIP's growth arrives "
-                 "in the later years. Interruptions early on have an outsized effect on the end value.",
+        "short": "Compounding means gains themselves earn returns, so most of a long SIP's growth arrives in the "
+                 "later years. Early interruptions have an outsized effect on the end value.",
         "points": [
             "**Illustration (assumed 10% a year, not a forecast):** ₹5,000 a month for 10 years (₹6 lakh invested) "
             "grows to about ₹10.3 lakh.",
-            "**Stopping after year one:** the ₹60,000 invested, left alone for the remaining nine years, grows to "
-            "about ₹1.55 lakh at the same assumed rate.",
-            "**Pausing for six months instead:** ₹5.7 lakh invested grows to about ₹9.6 lakh. Most of the long-term "
+            "**Stopping after year one:** the ₹60,000 invested, left alone for nine more years, grows to about "
+            "₹1.55 lakh at the same rate.",
+            "**Pausing for six months instead:** ₹5.7 lakh invested grows to about ₹9.6 lakh, so most of the "
             "outcome is preserved.",
-            "Actual returns vary and can be negative; the illustration only shows how time in the market affects "
-            "outcomes under a fixed assumption.",
+            "Actual returns vary and can be negative. The illustration only shows how time in the market matters.",
         ],
-        "product": "Showing investors this trade-off at the cancellation moment, framed neutrally and with clear "
-                   "assumptions, makes pause or step-down a visible alternative without creating fear.",
+        "behaviour": "Humans think linearly about exponential growth, so stopping ‘just for now’ feels cheap. "
+                     "Present bias makes today's cash need feel bigger than a distant, abstract gain.",
+        "practice": [
+            "At the cancel moment, show the investor's own pause vs cancel trade-off with stated assumptions, "
+            "framed neutrally, without fear.",
+            "Celebrate milestones (e.g. 12 instalments) based on consistency, not returns.",
+        ],
     },
     {
-        "topic": "How SIP redemptions are taxed (India)",
-        "keys": ["tax", "taxed", "taxation", "ltcg", "stcg", "capital gain", "capital gains", "112a", "fifo"],
-        "weight": 3,  # a tax word almost always means a tax question
-        "themes": [],
-        "short": "Each SIP instalment is treated as a separate purchase, so its holding period and tax are worked "
-                 "out instalment by instalment, oldest units first (FIFO).",
+        "topic": "How SIP auto-debit mandates work (e-NACH and UPI AutoPay)",
+        "keys": ["mandate", "nach", "enach", "e-nach", "autopay", "auto pay", "auto-debit", "auto debit", "upi",
+                 "limit", "limits", "otp", "registration"],
+        "themes": ["Bank & Auto-Debit Friction"],
+        "short": "A SIP is debited through a standing instruction on the investor's bank account: an e-NACH "
+                 "mandate or UPI AutoPay. Most failures come from timing, balance, or a broken or expired mandate.",
         "points": [
-            "**Equity-oriented funds, held over 12 months (LTCG):** 12.5% on gains above ₹1.25 lakh a year in "
-            "total, without indexation.",
-            "**Equity-oriented funds, held 12 months or less (STCG):** 20%.",
+            "**Mandate limit:** the investor authorises a maximum amount, and each instalment must be within it. "
+            "Raising the SIP above the limit needs a new or modified mandate.",
+            "**e-NACH** is registered through net banking or a debit card, typically allows higher limits, and "
+            "can take a few working days to activate.",
+            "**UPI AutoPay (2026 rules):** after the first authenticated payment, recurring debits need no fresh "
+            "OTP up to ₹15,000 per transaction generally, and up to ₹1 lakh for mutual fund subscriptions, "
+            "insurance premiums and credit card bills. Banks must send a pre-debit notice at least 24 hours "
+            "before each debit. Check current RBI and NPCI rules, as limits change.",
+            "**Silent breakage:** a bank-account change, mandate expiry or limit mismatch stops future debits "
+            "unless the investor re-registers.",
+        ],
+        "behaviour": "Involuntary churn is the most preventable kind. The investor never decided to stop, but "
+                     "a failed debit plus a bank charge creates a negative association, and fixing the mandate "
+                     "feels like admin work.",
+        "practice": [
+            "Run a mandate health check (expiry, limit headroom, linked account) with one-tap guided "
+            "re-registration.",
+            "Offer an easy SIP-date shift to just after the investor's typical salary credit.",
+            "Track instalment success rate separately from voluntary cancellations.",
+        ],
+    },
+    {
+        "topic": "Mandate bounce charges and failed instalments",
+        "keys": ["charge", "charges", "bounce", "bounced", "penalty", "fees", "fine", "failed",
+                 "insufficient", "missed", "miss", "not debited"],
+        "weight": 2,
+        "themes": ["Bank & Auto-Debit Friction"],
+        "short": "A fund house typically doesn't charge for a missed SIP instalment, but the investor's bank "
+                 "usually does when a mandate debit fails for low balance.",
+        "points": [
+            "**Bank charges:** banks levy a return or bounce fee on failed NACH or auto-debits, often a few hundred "
+            "rupees plus GST. The amount varies by bank and is listed in its schedule of charges.",
+            "**Fund house side:** a missed instalment is simply not invested. There is usually no penalty from the "
+            "AMC, though the units for that month are not bought.",
+            "**Repeated failures:** many fund houses cancel a SIP automatically after a few consecutive failed "
+            "instalments, often three, and the investor may not notice.",
+            "**Prevention:** keep a balance buffer before the SIP date, align the date with salary credit, or "
+            "pause ahead of a known shortfall.",
+        ],
+        "behaviour": "A bounce fee on a ₹1,000 SIP feels like a punishment for investing. The investor blames "
+                     "the SIP rather than the timing, and cancels to avoid feeling it again.",
+        "practice": [
+            "Send a pre-debit heads-up (amount and date) with a one-tap ‘skip this month’ option before the debit "
+            "is attempted.",
+            "After a failure, explain plainly what happened and offer date-change or pause.",
+            "Alert the investor before an automatic cancellation after consecutive failures.",
+        ],
+    },
+    {
+        "topic": "How mutual fund and SIP redemptions are taxed (India)",
+        "keys": ["tax", "taxed", "taxation", "ltcg", "stcg", "capital gain", "capital gains", "112a", "fifo"],
+        "weight": 3,
+        "themes": [],
+        "short": "Each SIP instalment counts as a separate purchase, so holding period and tax are worked out "
+                 "instalment by instalment, oldest units first (FIFO).",
+        "points": [
+            "**Equity-oriented funds held over 12 months (LTCG):** 12.5% on gains above ₹1.25 lakh a year in total, "
+            "without indexation.",
+            "**Equity-oriented funds held 12 months or less (STCG):** 20%.",
             "**Debt funds bought on or after 1 April 2023:** gains are taxed at the investor's income-tax slab "
             "rate, whatever the holding period.",
-            "**SIP effect:** redeeming a whole SIP corpus after one year usually mixes long-term and short-term "
-            "units, because recent instalments are still under 12 months old.",
-            "These are the rates for FY 2026-27 (unchanged in Budget 2026). Tax rules change, so verify the "
-            "current position or ask a tax adviser.",
+            "**SIP effect:** redeeming a whole SIP corpus after one year usually mixes long- and short-term units, "
+            "because recent instalments are still under 12 months old.",
+            "These are the FY 2026-27 rates (unchanged in Budget 2026). Tax rules change, so verify the current "
+            "position or ask a tax adviser.",
         ],
-        "product": "Showing the estimated short-term vs long-term split before redemption helps investors avoid "
-                   "surprises, without advising them what to do.",
+        "behaviour": "Tax is rarely why people stop a SIP, but a surprise tax on an early redemption damages "
+                     "trust, and investors often assume the whole corpus is ‘long-term’ after a year.",
+        "practice": [
+            "Before redemption, show an estimated short-term vs long-term split of the units being sold.",
+            "Keep disclosures factual and avoid tax-saving urgency messaging.",
+        ],
     },
     {
-        "topic": "Neutral factors investors weigh (not a recommendation)",
-        "keys": ["which fund", "best fund", "should i", "recommend", "where to invest", "where should i invest"],
-        "themes": [],
-        "short": "There is no single right fund or decision. It depends on the investor's goal, time horizon, "
-                 "risk tolerance and cash-flow needs.",
+        "topic": "Lock-ins and exit loads",
+        "keys": ["exit load", "lock-in", "lock in", "elss", "redeem", "redemption", "withdraw", "early exit"],
+        "themes": ["Liquidity Shortage", "Disappointment Valley"],
+        "short": "Some funds restrict or charge for early withdrawals. Check each scheme's documents for the "
+                 "exact terms.",
         "points": [
-            "**Goal and horizon:** money needed within a few years is usually treated differently from long-term goals.",
-            "**Emergency buffer first:** keeping accessible savings separate stops a SIP from becoming the "
-            "emergency fund.",
-            "**Risk tolerance:** the investor's ability to sit through a fall without stopping matters as much as "
-            "expected return.",
-            "**Costs and category:** expense ratio, exit load and fund category are listed in each scheme's documents.",
-            "**Continuing vs stopping:** for a temporary cash crunch, pausing or stepping down is an alternative to "
-            "cancelling. The right choice depends on personal circumstances.",
+            "**ELSS** (tax-saving) funds have a three-year lock-in, applied to each SIP instalment separately.",
+            "**Exit loads:** many equity funds charge a small exit load if units are redeemed within a set period, "
+            "often around a year. The exact terms are in the scheme documents.",
+            "Under FIFO, the earliest instalments clear lock-in and exit-load periods first.",
         ],
-        "product": "Platforms can help with neutral education and goal tools, while personal recommendations come "
-                   "from a SEBI-registered investment adviser.",
+        "behaviour": "Investors in a cash crunch discover lock-ins and exit loads only when they try to withdraw. "
+                     "That turns a liquidity problem into a trust problem.",
+        "practice": [
+            "Show lock-in and exit-load dates per instalment on the holdings and redemption screens.",
+            "Suggest a pause for temporary cash needs before the investor reaches the redeem flow.",
+        ],
+    },
+    {
+        "topic": "Step-up (top-up) and step-down SIPs",
+        "keys": ["step up", "step-up", "top up", "top-up", "increase sip", "increase my sip", "step down",
+                 "step-down", "reduce sip", "decrease", "lower amount"],
+        "themes": ["Liquidity Shortage"],
+        "short": "A step-up SIP raises the instalment by a fixed amount or percentage at set intervals. A step-down "
+                 "reduces it. Both adapt the SIP to income instead of ending it.",
+        "points": [
+            "**Step-up:** aligns contributions with salary growth. Many fund houses and platforms support "
+            "automatic annual top-ups.",
+            "**Step-down:** reducing the amount during a tight period keeps the habit and mandate alive.",
+            "**Mandate headroom:** a step-up may need a higher mandate limit, so set it with room to grow.",
+        ],
+        "behaviour": "An all-or-nothing frame (‘I can't afford ₹5,000, so I'll stop’) causes avoidable churn. "
+                     "Giving people a smaller-amount option keeps them in the habit.",
+        "practice": [
+            "Offer step-down as a first-class option on the cancel screen.",
+            "Prompt an optional step-up only at natural moments, such as the SIP anniversary, never with "
+            "pressure.",
+        ],
+    },
+    {
+        "topic": "Direct vs regular mutual fund plans",
+        "keys": ["direct plan", "regular plan", "direct vs regular", "regular vs direct", "expense ratio",
+                 "commission"],
+        "weight": 2,
+        "themes": [],
+        "short": "Direct and regular plans hold the same portfolio. A direct plan has no distributor commission, "
+                 "so its expense ratio is lower; a regular plan includes the commission.",
+        "points": [
+            "The lower expense ratio of a direct plan compounds into a meaningful difference over long periods.",
+            "A regular plan pays for distributor services, which some investors value.",
+            "Expense ratios are published by each fund house and change over time.",
+        ],
+        "behaviour": "Small recurring costs are psychologically invisible (low salience). Investors focus on "
+                     "headline returns, not the fees deducted inside NAV.",
+        "practice": [
+            "Display expense ratio clearly and consistently on fund and SIP pages.",
+            "Keep the plan type visible in the investor's holdings.",
+        ],
+    },
+    {
+        "topic": "Choosing a SIP date",
+        "keys": ["sip date", "which date", "best date", "debit date", "date of sip", "change date", "salary date"],
+        "weight": 2,
+        "themes": ["Bank & Auto-Debit Friction"],
+        "short": "Over long periods the specific SIP date tends to matter far less than whether each debit "
+                 "succeeds and the SIP keeps running.",
+        "points": [
+            "Choose a date a few days after salary credit, so the balance is there.",
+            "Differences between dates usually even out over many years of instalments.",
+            "Most platforms let you change the date, though it can take a cycle to apply.",
+        ],
+        "behaviour": "Investors over-think the ‘best date’ (an illusion of control) and under-think cash-flow "
+                     "timing, which is what actually causes failed debits.",
+        "practice": [
+            "Default the SIP date suggestion to a few days after the investor's stated salary date.",
+            "Make date changes self-serve and instant to understand.",
+        ],
+    },
+    {
+        "topic": "Fund overlap and diversification",
+        "keys": ["overlap", "diversif", "too many funds", "multiple funds", "same category", "consolidat"],
+        "themes": ["Same-Category Overlap"],
+        "short": "Several funds in the same category often hold many of the same stocks. More funds doesn't "
+                 "automatically mean more diversification.",
+        "points": [
+            "Funds in a category follow similar mandates, so their top holdings frequently overlap.",
+            "Diversification comes from category, asset-class and strategy mix, not fund count.",
+            "When overlap is discovered, investors often cancel several SIPs at once rather than consolidating.",
+        ],
+        "behaviour": "Choice overload and ‘diversification illusion’ lead to fund collecting. Discovering the "
+                     "overlap then triggers self-doubt and a clean-up that looks like churn.",
+        "practice": [
+            "Show category-level overlap of the investor's own holdings.",
+            "Offer a guided ‘merge into one SIP’ flow where the investor chooses what to keep. The platform does "
+            "not recommend a scheme.",
+        ],
+    },
+    {
+        "topic": "Goal-based investing and onboarding",
+        "keys": ["goal", "onboard", "purpose", "plan", "beginner", "first time", "first-time", "new investor",
+                 "start investing"],
+        "themes": ["Directionless Onboarding"],
+        "short": "SIPs started without a goal or horizon have nothing to anchor them when motivation dips or "
+                 "returns look flat.",
+        "points": [
+            "A named goal (an emergency buffer, a home deposit, education) with a horizon gives a reason to "
+            "continue.",
+            "Fast onboarding gets the first SIP live quickly but rarely connects it to a life outcome.",
+            "Milestone check-ins against the investor's own goal reinforce the habit without promoting products.",
+        ],
+        "behaviour": "Without a goal, the SIP is just an expense line, so present bias wins whenever money is "
+                     "tight. A named goal creates a mental account people are reluctant to raid.",
+        "practice": [
+            "Add an optional, skippable goal step at SIP creation.",
+            "Send neutral milestone check-ins at M3, M6, M9 and M12 against the investor's own goal.",
+        ],
+    },
+    {
+        "topic": "Liquidity, emergencies and SIP sizing",
+        "keys": ["emergency", "liquidity", "job", "salary", "afford", "cash", "income", "sizing", "budget"],
+        "themes": ["Liquidity Shortage"],
+        "short": "Many SIPs stop because of a cash-flow shock, not because the investor gave up on investing.",
+        "points": [
+            "SIPs sized on peak-month income leave no buffer for variable earnings or one-off expenses.",
+            "Without an emergency fund, the SIP corpus becomes the emergency fund and gets redeemed.",
+            "A commonly cited guideline is an emergency buffer of a few months' expenses held separately.",
+        ],
+        "behaviour": "Mental accounting: when there's no separate ‘emergency’ bucket, the investment becomes "
+                     "the default source of cash, and redemption feels like a reasonable fix.",
+        "practice": [
+            "Offer pause and step-down before cancellation or redemption.",
+            "Suggest a SIP amount based on the investor's own stated budget, with headroom.",
+        ],
+    },
+    {
+        "topic": "Investor psychology behind SIP drop-offs",
+        "keys": ["psycholog", "behavio", "bias", "emotion", "loss aversion", "herd", "patience", "impatien",
+                 "mindset", "regret", "fomo"],
+        "themes": ["Disappointment Valley", "Market Correction Panic", "Social Influence"],
+        "short": "Most SIP drop-offs are driven less by the product than by predictable behavioural biases, "
+                 "especially in the first year.",
+        "points": [
+            "**Loss aversion:** a red portfolio triggers action out of proportion to its size.",
+            "**Myopic loss aversion:** checking often makes normal ups and downs feel like constant losses.",
+            "**Anchoring:** year-one equity returns are judged against familiar FD rates.",
+            "**Herding and recency:** peers, creators and headlines override the original plan.",
+            "**Present bias:** today's spending beats a distant goal, especially when no goal was set.",
+        ],
+        "behaviour": "These biases cluster around months 9–14: early enthusiasm has faded, compounding isn't "
+                     "visible yet, and the investor has seen at least one drawdown.",
+        "practice": [
+            "Link goals at setup and reduce red-number shocks on the portfolio screen.",
+            "Give calm, factual context at stress moments, with no manipulation or urgency.",
+        ],
     },
     {
         "topic": "Measuring SIP retention and churn",
@@ -439,12 +598,39 @@ KNOWLEDGE_BASE = [
                  "debit failures.",
         "points": [
             "**M12 SIP retention:** share of SIPs still active 12 months after activation, by monthly cohort.",
-            "**Instalment success rate:** share of scheduled debits that succeed. This isolates bank and mandate friction.",
-            "**Pause-to-cancel ratio:** how often investors choose a pause over a cancellation when offered both.",
-            "**Reactivation rate:** paused or cancelled SIPs that resume within N months.",
+            "**Instalment success rate:** share of scheduled debits that succeed, which isolates bank and "
+            "mandate friction.",
+            "**Pause-to-cancel ratio** and **reactivation rate** show whether softer exits are working.",
         ],
-        "product": "Pair these with the qualitative drivers in this engine to see why each cohort leaves, not just "
-                   "how many.",
+        "behaviour": "Aggregate churn hides the mix. Involuntary failures and voluntary exits need opposite "
+                     "fixes, so blending them leads to the wrong interventions.",
+        "practice": [
+            "Report voluntary and involuntary churn separately, by cohort and tenure.",
+            "Pair the numbers with the qualitative drivers in this engine to see why each cohort leaves.",
+        ],
+    },
+    {
+        "topic": "Neutral factors investors weigh (not a recommendation)",
+        "keys": ["which fund", "best fund", "should i", "recommend", "where to invest", "where should i invest"],
+        "themes": [],
+        "short": "There is no single right fund or decision. It depends on the investor's goal, time horizon, "
+                 "risk tolerance and cash-flow needs.",
+        "points": [
+            "**Goal and horizon:** money needed within a few years is usually treated differently from long-term "
+            "goals.",
+            "**Emergency buffer first:** separate savings stop a SIP becoming the emergency fund.",
+            "**Risk tolerance:** being able to sit through a fall without stopping matters as much as expected "
+            "return.",
+            "**Costs and category:** expense ratio, exit load and category are in each scheme's documents.",
+            "**Continuing vs stopping:** for a temporary crunch, pausing or stepping down is an alternative to "
+            "cancelling. The right choice depends on personal circumstances.",
+        ],
+        "behaviour": "Under uncertainty people look for a single ‘right answer’ and defer to whoever sounds "
+                     "confident, which is why unverified tips drive so many switches.",
+        "practice": [
+            "Provide neutral education and goal tools. Personal recommendations come from a SEBI-registered "
+            "investment adviser.",
+        ],
     },
 ]
 
@@ -457,8 +643,10 @@ CONCEPT_PATTERN = re.compile(r"\b(what is|what's|what are the rules|explain|how 
                              r"difference|vs\.?|versus|better|meaning|concept|psycholog|mechanism|why does|"
                              r"what happens|is it (good|bad|wise|okay)|how (much|long)|"
                              r"how (do|should|can) (we|i|you) (measure|track|calculate|think))\b", re.I)
-DATA_CUE_PATTERN = re.compile(r"\b(top|most common|complaints?|friction points?|what do (investors|users|people) say|"
-                              r"how many|percentage|share of|reviews?|quotes?|examples?|data)\b", re.I)
+DATA_CUE_PATTERN = re.compile(r"\b(top|most common|complain\w*|friction|issues?|problems?|bugs?|glitch\w*|errors?|"
+                              r"churn\w*|drop[- ]?offs?|why do (people|users|investors|customers)|reasons?|"
+                              r"what do (investors|users|people|customers) say|users?|reviews?|quotes?|examples?|"
+                              r"how many|percentage|share of|data|feedback|app)\b", re.I)
 
 
 def _esc(text: str) -> str:
@@ -654,39 +842,140 @@ def _data_answer(ctx: dict, total: int) -> list[str]:
     return out
 
 
-def _concept_answer(topics: list[dict], q: str, data: pd.DataFrame) -> list[str]:
-    main = topics[0]
-    out = [f"**{main['topic']}**", f"**Short answer:** {main['short']}",
-           "**Key points**\n" + "\n".join(f"- {p}" for p in main["points"])]
-    if len(topics) > 1 and not topics[1]["topic"].startswith("Neutral factors"):
-        extra = topics[1]
-        out.append(f"**Related: {extra['topic']}**\n- {extra['short']}")
+def _data_tiein(themes: list[str], q: str, data: pd.DataFrame, n_quotes: int = 2) -> list[str]:
+    """Short 'what the review data shows' block for a set of related drivers."""
+    related = [t for t in themes if t in set(data["Problem Theme"])]
+    if not related:
+        return []
+    sub = data[data["Problem Theme"].isin(related)]
+    n, total = len(sub), len(data)
+    lines = [f"**What the review data shows:** {n} of {total} reviews ({_pct(n, total)}) fall under "
+             f"{' / '.join(related)}."]
+    emo = sub["Investor Emotional Trigger"].value_counts()
+    beh = sub["Problem Behaviour"].value_counts()
+    if len(emo):
+        lines.append(f"- Dominant emotion: **{emo.index[0]}** ({_pct(int(emo.iloc[0]), n)})")
+    if len(beh):
+        lines.append("- What investors did: " + ", ".join(f"{b} {_pct(int(c), n)}" for b, c in beh.head(3).items()))
+    rc = sub["Problem Root Cause"].value_counts()
+    if len(rc):
+        lines.append(f"- Most common root cause: {_esc(rc.index[0])}")
+    out = ["\n".join(lines)]
+    ctx = {"subset": sub, "tokens": [w for w in re.findall(r"[a-z]{4,}", q) if w not in STOPWORDS],
+           "themes": related, "overall": False}
+    quotes = _quotes(ctx, n_quotes)
+    if quotes:
+        out += quotes
+    return out
 
-    related = [t for t in main["themes"] if t in set(data["Problem Theme"])]
+
+def _concept_answer(topics: list[dict], q: str, data: pd.DataFrame) -> list[str]:
+    """Structured domain answer: explanation & trade-offs → behaviour insight → Groww best practice."""
+    main = topics[0]
+    neutral = topics[1] if len(topics) > 1 and topics[1]["topic"].startswith("Neutral factors") else None
+    related = topics[1] if len(topics) > 1 and not neutral else None
+
+    out = [f"### {main['topic']}",
+           f"**Short answer:** {main['short']}",
+           "**Direct explanation & trade-offs**\n" + "\n".join(f"- {p}" for p in main["points"])]
     if related:
-        sub = data[data["Problem Theme"].isin(related)]
-        n, total = len(sub), len(data)
-        lines = [f"**What the discovery data shows:** {n} of {total} records ({_pct(n, total)}) fall under "
-                 f"{' / '.join(related)}."]
-        emo = sub["Investor Emotional Trigger"].value_counts()
-        beh = sub["Problem Behaviour"].value_counts()
-        if len(emo):
-            lines.append(f"- Dominant emotion: **{emo.index[0]}** ({_pct(emo.iloc[0], n)})")
-        if len(beh):
-            lines.append("- What investors did: " + ", ".join(f"{b} {_pct(c, n)}" for b, c in beh.head(3).items()))
-        rc = sub["Problem Root Cause"].value_counts()
-        if len(rc):
-            lines.append(f"- Most common root cause: {_esc(rc.index[0])}")
-        out.append("\n".join(lines))
-        ctx = {"subset": sub, "tokens": [w for w in re.findall(r"[a-z]{4,}", q) if w not in STOPWORDS],
-               "themes": related, "overall": False}
-        quotes = _quotes(ctx, 2)
-        if quotes:
-            out.append("**In investors' own words**")
-            out += quotes
-    out.append(f"**Product angle:** {main['product']}")
-    if len(topics) > 1 and topics[1]["topic"].startswith("Neutral factors"):
-        out.append("**Neutral factors to weigh**\n" + "\n".join(f"- {p}" for p in topics[1]["points"]))
+        out.append(f"**Related: {related['topic']}**\n- {related['short']}")
+    out.append(f"**Investor behaviour insight**\n\n{main['behaviour']}")
+    out += _data_tiein(main["themes"], q, data)
+    out.append("**Suggested Groww in-app best practice**\n" + "\n".join(f"- {p}" for p in main["practice"]))
+    if neutral:
+        out.append("**Neutral factors to weigh**\n" + "\n".join(f"- {p}" for p in neutral["points"]))
+    return out
+
+
+# Behavioural-economics lenses for questions outside the mapped topics
+BEHAVIOUR_LENSES = [
+    ("Loss aversion", ["loss", "lose", "losing", "down", "negative", "risk", "safe", "crash", "fall"],
+     "losses weigh roughly twice as much as equal gains, so any visible drop pushes people to act."),
+    ("Present bias", ["now", "today", "need", "money", "cash", "spend", "afford", "quick", "fast", "soon"],
+     "near-term needs and rewards outweigh distant goals, so long-horizon investing loses out when money is tight."),
+    ("Choice overload", ["which", "best", "better", "than", "options", "many", "compare", "choose", "select",
+                         "vs", "or "],
+     "too many similar options lead to delay, second-guessing or abandoning the decision altogether."),
+    ("Anchoring", ["fd", "fixed", "interest", "percent", "%", "return", "expect", "rate"],
+     "people judge outcomes against a familiar reference point (often FD rates), not against what the "
+     "product is designed to do."),
+    ("Herding & social proof", ["friend", "everyone", "people", "trend", "popular", "influencer", "youtube",
+                                "reddit", "others"],
+     "what peers and creators are doing overrides the investor's own plan, especially when uncertain."),
+    ("Status-quo & default effect", ["auto", "default", "continue", "keep", "habit", "start", "stop", "change"],
+     "whatever happens by default tends to persist. That is why automated SIPs stick, and why restarting "
+     "after a stop is rare."),
+    ("Mental accounting", ["emergency", "bonus", "salary", "budget", "bucket", "separate", "save", "saving"],
+     "money is mentally labelled by source or purpose, which decides whether investments get raided."),
+]
+
+
+GENERAL_FINANCE_TERMS = set("""inflation gold silver stock stocks share shares equity debt bond bonds crypto bitcoin
+insurance loan loans emi interest rate rates fd rd ppf epf nps elss etf etfs index nifty sensex portfolio wealth
+money saving savings retirement pension budget expense income salary dividend nav amc sebi amfi kyc demat broker
+broking trading invest investing investment investments investor fund funds mutual sip sips lumpsum returns risk
+volatility recession economy rupee dollar real estate property house car goal goals plan planning tax""".split())
+
+
+def _looks_meaningful(q: str, data: pd.DataFrame) -> bool:
+    """Cheap guard against keyboard-mash input: at least one recognisable word must appear."""
+    words = set(re.findall(r"[a-z]{3,}", q))
+    if not words:
+        return False
+    if words & GENERAL_FINANCE_TERMS or words & STOPWORDS:
+        return True
+    kb_vocab = {w for kb in KNOWLEDGE_BASE for k in kb["keys"] for w in re.findall(r"[a-z]{3,}", k)}
+    if words & kb_vocab:
+        return True
+    sample = " ".join(data["Original Comment"].astype(str).head(300)).lower()
+    return any(w in sample for w in words if len(w) >= 4)
+
+
+def _fallback_answer(question: str, data: pd.DataFrame) -> list[str]:
+    """Analytical response for questions outside mapped topics: framed through investor retention and
+    behavioural economics, with whatever the review data can contribute."""
+    q = question.lower()
+    subject = re.sub(r"\s+", " ", re.sub(r"[?!.]+$", "", question.strip()))[:90]
+    lenses = [(name, why) for name, keys, why in BEHAVIOUR_LENSES if _match_any(q, keys)][:3]
+    if len(lenses) < 2:
+        defaults = [x for x in BEHAVIOUR_LENSES if x[0] in ("Present bias", "Loss aversion",
+                                                            "Status-quo & default effect")]
+        lenses += [(n, w) for n, _, w in defaults if n not in {l[0] for l in lenses}][: 3 - len(lenses)]
+
+    out = [f"### Analytical view: “{_esc(subject)}”",
+           "_This isn't one of the pre-mapped SIP topics, so here's how it plays out for SIP retention and "
+           "investor behaviour, plus anything the review data adds._",
+           "**Direct explanation & trade-offs**\n"
+           "- Almost every SIP decision balances three tensions: **liquidity now vs growth later**, **certainty vs "
+           "market-linked outcomes**, and **simplicity vs control**.\n"
+           "- Choices that keep money invested consistently tend to preserve the long-term outcome. Choices that "
+           "react to short-term events tend to interrupt compounding.\n"
+           "- The right answer for any individual depends on their goal, horizon and cash-flow, so neutral "
+           "information beats a single prescription."]
+    out.append("**Investor behaviour insight**\n" + "\n".join(f"- **{n}:** {w[0].upper() + w[1:]}" for n, w in lenses))
+
+    # What the reviews contribute: keyword overlap first, then nearest driver, then the overall mix
+    tokens = [w for w in re.findall(r"[a-z]{4,}", q) if w not in STOPWORDS]
+    hits = data[data["Original Comment"].str.contains("|".join(map(re.escape, tokens)), case=False, na=False)] \
+        if tokens else data.iloc[0:0]
+    if len(hits):
+        top = hits["Problem Theme"].value_counts()
+        out.append(f"**What the review data shows:** {len(hits)} of {len(data)} reviews ({_pct(len(hits), len(data))}) "
+                   f"mention {', '.join(f'“{t}”' for t in tokens[:3])}. Most of them fall under "
+                   f"**{top.index[0]}** ({_pct(int(top.iloc[0]), len(hits))}).")
+        out += _quotes({"subset": hits, "tokens": tokens, "themes": [top.index[0]], "overall": False}, 2)
+    else:
+        top = data["Problem Theme"].value_counts().head(3)
+        out.append("**What the review data shows:** no reviews mention this directly. The biggest drop-off "
+                   "drivers overall are " + ", ".join(f"**{t}** ({_pct(int(c), len(data))})" for t, c in top.items())
+                   + ". Ask about any of these for counts and quotes.")
+    out.append("**Suggested Groww in-app best practice**\n"
+               "- Put neutral, contextual education at the decision moment, not in a separate help page.\n"
+               "- Make the habit-preserving option (pause, step-down, date change) as easy as the exit, with "
+               "cancel still one tap away.\n"
+               "- Measure the effect on M12 SIP retention by activation cohort, separating voluntary and "
+               "involuntary churn.")
     return out
 
 
@@ -719,19 +1008,21 @@ def _solution_answer(data: pd.DataFrame, ctx: dict) -> list[str]:
 
 def answer_question(question: str, data: pd.DataFrame) -> tuple[str, str]:
     """Built-in answer: dataset evidence + domain knowledge. Returns (markdown, kind) where kind is one of
-    'data', 'knowledge', 'solution', 'advice' or 'nomatch'. Works with no network or API key."""
+    'data', 'knowledge', 'solution', 'advice' or 'analysis'. Works with no network or API key."""
     q = question.lower().strip()
     total = len(data)
     if not q:
-        return "Ask me anything about SIP drop-offs, for example “Why do people pause their SIPs?”", "nomatch"
+        return "Ask me anything about SIP drop-offs, for example “Why do people pause their SIPs?”", "analysis"
     if total == 0:
-        return "No records are loaded yet. Load the benchmark corpus or run live ingestion first.", "nomatch"
+        return "No records are loaded yet. Load the benchmark corpus or run live ingestion first.", "analysis"
 
     out: list[str] = []
     topics = _match_topics(q)
     ctx = _retrieve(q, data)
     is_advice = bool(ADVICE_PATTERN.search(q))
-    is_concept = bool(topics) and bool(CONCEPT_PATTERN.search(q)) and not DATA_CUE_PATTERN.search(q)
+    data_question = bool(DATA_CUE_PATTERN.search(q)) or ctx["asks_when"]
+    # Mapped investor topics answer from the domain engine unless the question is about reviews/complaints.
+    is_concept = bool(topics) and not data_question
 
     if is_advice:
         out.append("_I can't recommend specific funds or tell you whether to buy, sell, stop or continue an "
@@ -749,15 +1040,17 @@ def answer_question(question: str, data: pd.DataFrame) -> tuple[str, str]:
     if is_concept:
         return "\n\n".join(_concept_answer(topics, q, data)), "knowledge"
 
-    nothing_matched = ctx["overall"] and not ctx["asks_when"] and not ctx["themes"] and not topics
+    has_review_signal = data_question or bool(ctx["themes"]) or not ctx["overall"]
+    if not has_review_signal and not _looks_meaningful(q, data):
+        return ("I'm not sure what you mean. Try one of the suggested questions above, or ask about SIP "
+                "cancellations, auto-debit failures, returns, market falls, taxes or SIP vs lumpsum."), "analysis"
+    if not has_review_signal:
+        # Not a mapped topic and nothing review-specific: analytical behavioural-economics response.
+        return "\n\n".join(_fallback_answer(question, data)), "analysis"
     out += _data_answer(ctx, total)
     if topics:
         t = topics[0]
         out.append(f"**Background: {t['topic']}**\n- {t['short']}\n" + "\n".join(f"- {p}" for p in t["points"][:2]))
-    if nothing_matched:
-        out.insert(0, "_I didn't find a specific match for that, so here is the overall picture. Try asking about "
-                      "a driver (e.g. auto-debit, returns, market falls), a behaviour (pause, cancel) or a concept._")
-        return "\n\n".join(out), "nomatch"
     return "\n\n".join(out), "data"
 
 
@@ -820,8 +1113,9 @@ Rules:
 - Never recommend a specific fund, stock or AMC, and never tell the reader to buy, sell, stop or continue an
   investment. No FOMO, fear or urgency language.
 - Do not include quotes or links; verified review quotes are appended automatically after your answer.
-- Write for a product leader: start with a one-line **Short answer**, then concise bullet points, then a
-  **Product angle** line when relevant. Use markdown. Stay under 300 words."""
+- Structure: a one-line **Short answer**; then **Direct explanation & trade-offs** (bullets); then
+  **Investor behaviour insight**; then **Suggested Groww in-app best practice** (bullets). For review-data
+  questions, lead with the counts and percentages from DATA CONTEXT. Use markdown. Stay under 350 words."""
 
 
 @st.cache_data(show_spinner=False, ttl=86400)
@@ -857,9 +1151,7 @@ def respond(question: str, data: pd.DataFrame) -> tuple[str, str]:
     if not q or data.empty:
         return builtin, "Built-in"
 
-    web = web_lookup(q) if kind == "nomatch" else None
-    web_md = (f"**From the web: {web['title']} (Wikipedia)**\n\n> {_esc(web['extract'])}\n\n"
-              f"[Read more on Wikipedia ↗]({web['url']})") if web else ""
+    web = web_lookup(q) if kind == "analysis" else None
 
     if llm_enabled():
         quotes = [ln for ln in builtin.split("\n\n") if ln.startswith(">")]
@@ -875,15 +1167,12 @@ def respond(question: str, data: pd.DataFrame) -> tuple[str, str]:
                 tail += f"\n\n[Background: {web['title']} on Wikipedia ↗]({web['url']})"
             return llm + tail, "Claude (Anthropic API) + discovery data" + (" + Wikipedia" if web else "")
 
+    source = {"data": "Review data synthesis", "solution": "Review data + product playbook",
+              "knowledge": "SIP domain engine + review data", "advice": "SIP domain engine (neutral)",
+              "analysis": "Behavioural analysis + review data"}[kind]
     if web:
-        top = data["Problem Theme"].value_counts()
-        summary_line = (f"**Related discovery data:** across {len(data)} records, the leading SIP drop-off driver is "
-                        f"**{top.index[0]}** ({_pct(int(top.iloc[0]), len(data))}). Ask about a driver or behaviour "
-                        "for evidence and quotes.")
-        return web_md + "\n\n" + summary_line, "Wikipedia + discovery data"
-    source = {"data": "Discovery data", "solution": "Discovery data + product playbook",
-              "knowledge": "Built-in SIP knowledge + discovery data", "advice": "Built-in SIP knowledge (neutral)",
-              "nomatch": "Discovery data"}[kind]
+        builtin += f"\n\n**Reference:** [{web['title']} on Wikipedia ↗]({web['url']}): {_esc(_excerpt(web['extract'], 260))}"
+        source += " + Wikipedia"
     return builtin, source
 
 
