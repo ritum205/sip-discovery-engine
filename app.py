@@ -76,9 +76,11 @@ st.markdown(
   .step span {{ color: #5A6B82; font-size: 0.86rem; }}
   .notice {{ background: #FFF8E6; border: 1px solid #F2D58A; color: #6B5100; border-radius: 10px;
             padding: 10px 14px; font-size: 0.86rem; margin: 6px 0 14px 0; }}
-  .chat-head {{ background: {LIGHT}; border: 1px solid #E3E8EF; border-radius: 14px; padding: 14px 18px; margin: 26px 0 10px 0; }}
+  .chat-head {{ background: #fff; border: 1px solid #E3E8EF; border-left: 5px solid {EMERALD}; border-radius: 14px;
+               padding: 14px 18px; margin: 0 0 10px 0; box-shadow: 0 1px 2px rgba(27,54,93,0.04); }}
   .chat-head h3 {{ color: {NAVY}; margin: 0 0 2px 0; }}
-  .chat-head span {{ color: #5A6B82; font-size: 0.88rem; }}
+  .chat-head span {{ color: #5A6B82; font-size: 0.9rem; }}
+  div[data-testid="stForm"] {{ border: 1px solid #E3E8EF; border-radius: 12px; padding: 10px 14px 4px 14px; }}
   .footer {{ color: #5A6B82; font-size: 0.8rem; border-top: 1px solid #E3E8EF; padding-top: 12px; margin-top: 28px; }}
   [data-testid="stSidebar"] {{ background: {LIGHT}; }}
 </style>
@@ -145,14 +147,14 @@ def get_workbook(df: pd.DataFrame, note: str) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# Ask-the-Data engine (rule-based retrieval + summarisation over the dataset;
-# no external AI service or API key)
+# Q&A engine — hybrid of dataset evidence (counts, root causes, verbatim quotes)
+# and built-in SIP domain knowledge. Runs locally; no external AI service or API key.
 # ---------------------------------------------------------------------------
 THEME_SYNONYMS = {
     "Bank & Auto-Debit Friction": ["bank", "auto-debit", "autodebit", "auto debit", "autopay", "auto pay", "mandate",
                                    "nach", "enach", "bounce", "debit", "upi", "penalty", "deduct"],
     "Disappointment Valley": ["return", "returns", "xirr", "fd", "fixed deposit", "flat", "negative", "loss",
-                              "profit", "disappoint", "not growing", "red"],
+                              "profit", "disappoint", "not growing"],
     "Same-Category Overlap": ["overlap", "too many funds", "duplicate", "same stocks", "consolidat", "multiple funds"],
     "Directionless Onboarding": ["goal", "onboarding", "purpose", "why started", "no plan", "beginner", "aimless"],
     "Liquidity Shortage": ["job", "salary", "emergency", "rent", "emi", "afford", "cash", "liquidity", "money tight",
@@ -160,7 +162,7 @@ THEME_SYNONYMS = {
     "Market Correction Panic": ["crash", "market fall", "correction", "panic", "nifty", "sensex", "dip", "fear",
                                 "volatil", "scared"],
     "Social Influence": ["friend", "colleague", "influencer", "finfluencer", "youtube", "f&o", "crypto", "trading",
-                         "peer", "advice", "telegram"],
+                         "peer", "telegram"],
     "Platform Bugs": ["bug", "glitch", "crash the app", "app crash", "error", "support", "customer care", "kyc",
                       "otp", "login", "wrong nav", "units", "status", "technical"],
 }
@@ -174,14 +176,221 @@ STOPWORDS = set("""a an the and or of to in on for with about what why how when 
 people investors investor users user sip sips mutual fund funds their they them it its this that these those top most
 main biggest common complaints complaint issues issue problems problem say says said tell me show give list reasons
 reason cause causes driving drive leading lead groww app apps please any some more many much can could would should
-i we you our your my from by as at be been have has had into than then there here also just get got""".split())
+i we you our your my from by as at be been have has had into than then there here also just get got points point
+friction explain work works between difference""".split())
 
 SUGGESTED_QUESTIONS = [
-    "Why do people cancel their SIPs?",
-    "What are the top bank auto-debit complaints?",
-    "What do investors say about returns vs FD?",
+    "Why do people cancel their SIP?",
+    "What are the top bank auto-debit friction points?",
     "When do most SIPs stop?",
+    "Pause vs cancel — what's the difference?",
+    "How can Groww reduce SIP churn?",
 ]
+
+# Built-in domain knowledge for conceptual questions. General, educational and
+# non-advisory: no scheme recommendations, no return promises, no urgency.
+KNOWLEDGE_BASE = [
+    {
+        "topic": "Pausing vs cancelling a SIP",
+        "keys": ["pause", "cancel", "stop", "skip", "restart", "resume"],
+        "themes": ["Liquidity Shortage", "Market Correction Panic"],
+        "short": "Pausing skips a few instalments and keeps the SIP set up; cancelling ends all future instalments. "
+                 "In both cases, the units already bought stay invested.",
+        "points": [
+            "**Pause:** future instalments are skipped for a chosen number of months, then the SIP resumes on its own. "
+            "The registration and bank mandate stay in place. How long you can pause depends on the fund house and platform.",
+            "**Cancel:** no more instalments are debited. The existing units stay in the folio until redeemed. "
+            "Restarting later usually means setting up a new SIP and sometimes a new mandate.",
+            "**Missed instalments:** a fund house typically doesn't fine you for one, but the bank may charge a fee if a "
+            "debit fails for low balance. Many fund houses cancel a SIP after a few consecutive failed debits.",
+            "**Redeeming** is different again: it sells units and takes money out of the investment.",
+        ],
+        "product": "When ‘continue’ and ‘cancel’ are the only visible options, a temporary cash crunch turns into "
+                   "permanent churn. Showing pause or step-down at the moment of cancellation keeps the habit alive "
+                   "without pressure, as long as cancel stays one tap away.",
+    },
+    {
+        "topic": "Market volatility and SIPs",
+        "keys": ["volatil", "crash", "correction", "fall", "dip", "market down", "bear", "averaging", "rupee cost",
+                 "nav", "units"],
+        "themes": ["Market Correction Panic"],
+        "short": "A SIP invests a fixed amount on a schedule. When prices fall, the same amount buys more units, "
+                 "which lowers the average cost per unit over time.",
+        "points": [
+            "**Rupee-cost averaging:** buying at many price points smooths the entry price. It doesn't guarantee profit "
+            "or protect against loss.",
+            "**Drawdowns are normal for equity:** Indian equity indices have had several sharp corrections that later "
+            "recovered. Past patterns don't guarantee future outcomes.",
+            "**Stopping during a fall** means no new units are bought at the lower prices. That's the opposite of what the "
+            "SIP mechanism is designed for, though every investor's situation differs.",
+            "**Short holding periods** carry the widest range of outcomes for equity funds. The range narrows as the "
+            "holding period lengthens.",
+        ],
+        "product": "First-time investors often experience their first drawdown as a permanent loss. Neutral, factual "
+                   "context (historical drawdown and recovery ranges, units accumulated) helps more than any nudge. "
+                   "Avoid ‘buy the dip’ or urgency language.",
+    },
+    {
+        "topic": "Investor psychology behind SIP drop-offs",
+        "keys": ["psycholog", "behavio", "bias", "emotion", "loss aversion", "herd", "patience", "impatien", "mindset",
+                 "feel", "regret"],
+        "themes": ["Disappointment Valley", "Market Correction Panic", "Social Influence"],
+        "short": "Most SIP drop-offs are driven less by the product than by predictable behavioural biases, "
+                 "especially in the first year.",
+        "points": [
+            "**Loss aversion:** a loss feels about twice as painful as an equal gain feels good, so a red portfolio "
+            "triggers action.",
+            "**Myopic loss aversion:** checking the portfolio often makes normal ups and downs feel like constant losses.",
+            "**Anchoring:** new investors compare year-one equity returns with FD or savings rates they know well.",
+            "**Recency bias and herding:** recent news, peers or creators shape decisions more than the original plan.",
+            "**Present bias:** today's spending needs beat a distant goal, especially if no goal was ever set.",
+        ],
+        "product": "Goal-linking at setup, fewer red-number shocks on the portfolio screen, and calm factual context at "
+                   "stress moments address these biases without manipulation.",
+    },
+    {
+        "topic": "Why first-year SIP returns look flat",
+        "keys": ["xirr", "return", "flat", "fd", "fixed deposit", "first year", "one year", "1 year", "negative",
+                 "cagr", "absolute return"],
+        "themes": ["Disappointment Valley"],
+        "short": "In year one, most of the money has been invested for only a few months, so even good market "
+                 "periods produce small absolute gains.",
+        "points": [
+            "**Time-weighting:** with 12 monthly instalments, the average rupee has been invested for about 6 months "
+            "at month 12, and the latest instalment for almost none.",
+            "**XIRR** annualises returns across instalments with different dates. Over short periods it can swing "
+            "sharply and be misleading.",
+            "**FD comparisons** set an anchor of steady, guaranteed growth that equity is not designed to match "
+            "in the short term.",
+        ],
+        "product": "Showing units accumulated and the typical range of outcomes by holding period gives context "
+                   "without promising returns.",
+    },
+    {
+        "topic": "How SIP auto-debit works (mandates)",
+        "keys": ["mandate", "nach", "enach", "autopay", "auto pay", "auto-debit", "auto debit", "debit", "bounce",
+                 "bank", "upi"],
+        "themes": ["Bank & Auto-Debit Friction"],
+        "short": "A SIP is debited through a standing instruction on the investor's bank account (e-NACH or UPI "
+                 "AutoPay). Most failures come from timing, balance or a broken or expired mandate.",
+        "points": [
+            "**Set-up:** the investor authorises a mandate with a maximum amount. The platform then debits each "
+            "instalment on the SIP date.",
+            "**Low balance on the debit date** causes a failed instalment. Banks may charge a return or bounce fee.",
+            "**Bank-account changes, mandate expiry or limit mismatches** silently break future debits unless the "
+            "investor re-registers.",
+            "**Repeated failures:** many fund houses cancel a SIP after a few consecutive failed instalments, often "
+            "without the investor noticing.",
+        ],
+        "product": "Pre-debit reminders, an easy SIP-date change after typical salary credit, and a mandate health "
+                   "check with guided re-registration directly reduce involuntary churn.",
+    },
+    {
+        "topic": "Fund overlap and diversification",
+        "keys": ["overlap", "diversif", "too many funds", "multiple funds", "same category", "consolidat", "portfolio"],
+        "themes": ["Same-Category Overlap"],
+        "short": "Holding several funds in the same category often means owning many of the same stocks. Adding funds "
+                 "doesn't automatically add diversification.",
+        "points": [
+            "Funds in the same category follow similar mandates, so their top holdings frequently overlap.",
+            "When investors discover the overlap, they often cancel several SIPs at once rather than consolidating.",
+            "Diversification is driven by category, asset class and strategy mix, not the number of funds.",
+        ],
+        "product": "A category-level overlap view of the investor's own holdings, plus a guided ‘merge into one SIP’ "
+                   "flow, turns a cancellation moment into a consolidation. The investor chooses which SIP to keep; "
+                   "the platform does not recommend a scheme.",
+    },
+    {
+        "topic": "Goal-based investing and onboarding",
+        "keys": ["goal", "onboard", "purpose", "plan", "beginner", "first time", "first-time", "new investor", "start"],
+        "themes": ["Directionless Onboarding"],
+        "short": "SIPs started without a goal or horizon have nothing to anchor them when motivation dips or "
+                 "returns look flat.",
+        "points": [
+            "A named goal (an emergency buffer, a home deposit, education) with a horizon gives a reason to continue.",
+            "Fast onboarding gets the first SIP live quickly but rarely connects it to a life outcome.",
+            "Milestone check-ins against the investor's own goal reinforce the habit without promoting products.",
+        ],
+        "product": "An optional, skippable goal step at SIP creation and neutral milestone updates at M3, M6, M9 "
+                   "and M12.",
+    },
+    {
+        "topic": "Liquidity, emergencies and SIP sizing",
+        "keys": ["emergency", "liquidity", "job", "salary", "afford", "cash", "income", "sizing", "amount", "budget",
+                 "step down", "step-down", "step up", "top-up"],
+        "themes": ["Liquidity Shortage"],
+        "short": "Many SIPs stop because of a cash-flow shock, not because the investor has given up on investing.",
+        "points": [
+            "SIPs sized on a peak-month income leave no buffer for variable earnings or one-off expenses.",
+            "Without an emergency fund, the SIP corpus becomes the emergency fund and gets redeemed.",
+            "**Step-down / step-up:** reducing or increasing the instalment amount adapts the SIP to income "
+            "instead of ending it.",
+        ],
+        "product": "Pause and step-down options at the cancellation moment, plus SIP-amount guidance based on the "
+                   "investor's own stated budget, keep the habit through temporary stress.",
+    },
+    {
+        "topic": "Lock-ins, exit loads and redemption timing",
+        "keys": ["exit load", "lock-in", "lock in", "elss", "redeem", "redemption", "withdraw", "tax"],
+        "themes": ["Liquidity Shortage", "Disappointment Valley"],
+        "short": "Some funds restrict or charge for early withdrawals, and holding period affects how gains are taxed. "
+                 "Check the scheme documents and current tax rules.",
+        "points": [
+            "**ELSS** (tax-saving) funds have a three-year lock-in, applied to each SIP instalment separately.",
+            "**Exit loads:** many equity funds charge a small exit load if units are redeemed within a set period "
+            "(often around a year). The exact terms are in each scheme's documents.",
+            "**Tax:** gains are taxed differently depending on fund type and holding period. Rules change, so "
+            "investors should check current regulations.",
+        ],
+        "product": "Clear, factual disclosure of lock-in and exit-load dates on the redemption screen prevents "
+                   "surprises that erode trust.",
+    },
+    {
+        "topic": "Neutral factors investors weigh (not a recommendation)",
+        "keys": ["which fund", "best fund", "should i", "recommend", "where to invest", "where should i invest"],
+        "themes": [],
+        "short": "There is no single right fund or decision. It depends on the investor's goal, time horizon, "
+                 "risk tolerance and cash-flow needs.",
+        "points": [
+            "**Goal and horizon:** money needed within a few years is usually treated differently from long-term goals.",
+            "**Emergency buffer first:** keeping accessible savings separate stops a SIP from becoming the "
+            "emergency fund.",
+            "**Risk tolerance:** the investor's ability to sit through a fall without stopping matters as much as "
+            "expected return.",
+            "**Costs and category:** expense ratio, exit load and fund category are listed in each scheme's documents.",
+            "**Continuing vs stopping:** for a temporary cash crunch, pausing or stepping down is an alternative to "
+            "cancelling. The right choice depends on personal circumstances.",
+        ],
+        "product": "Platforms can help with neutral education and goal tools, while personal recommendations come "
+                   "from a SEBI-registered investment adviser.",
+    },
+    {
+        "topic": "Measuring SIP retention and churn",
+        "keys": ["metric", "measure", "kpi", "retention rate", "churn rate", "north star", "cohort", "track"],
+        "themes": [],
+        "short": "SIP churn is best tracked by activation cohort, separating voluntary stops from involuntary "
+                 "debit failures.",
+        "points": [
+            "**M12 SIP retention:** share of SIPs still active 12 months after activation, by monthly cohort.",
+            "**Instalment success rate:** share of scheduled debits that succeed. This isolates bank and mandate friction.",
+            "**Pause-to-cancel ratio:** how often investors choose a pause over a cancellation when offered both.",
+            "**Reactivation rate:** paused or cancelled SIPs that resume within N months.",
+        ],
+        "product": "Pair these with the qualitative drivers in this engine to see why each cohort leaves, not just "
+                   "how many.",
+    },
+]
+
+ADVICE_PATTERN = re.compile(r"\b(which|best|top|good)\s+(mutual\s+)?funds?\b|\bshould i (invest|buy|sell|stop|"
+                            r"continue|redeem|pause|cancel|withdraw)\b|\brecommend\b.*\bfund|\bwhere (should|to) i invest\b", re.I)
+SOLUTION_PATTERN = re.compile(r"\b(fix|fixes|solve|solution|solutions|reduce|prevent|improve|product (fix|fixes|"
+                              r"solution|solutions|change|changes|idea|ideas)|feature|features|intervention|"
+                              r"interventions|what can groww|how can groww|how should groww)\b", re.I)
+CONCEPT_PATTERN = re.compile(r"\b(what is|what's|explain|how does|how do .* work|difference|vs\.?|versus|"
+                             r"meaning|concept|psycholog|mechanism|why does|how (do|should|can) (we|i|you) "
+                             r"(measure|track|calculate|think))\b", re.I)
+DATA_CUE_PATTERN = re.compile(r"\b(top|most common|complaints?|friction points?|what do (investors|users|people) say|"
+                              r"how many|percentage|share of|reviews?|quotes?|examples?|data)\b", re.I)
 
 
 def _esc(text: str) -> str:
@@ -206,14 +415,22 @@ def _match_any(q: str, terms: list[str]) -> bool:
     return any(re.search(r"(?<![a-z])" + re.escape(t), q) for t in terms)
 
 
-def answer_question(question: str, data: pd.DataFrame) -> str:
-    """Return a structured markdown answer grounded in the dataset."""
-    q = question.lower().strip()
-    total = len(data)
-    if total == 0:
-        return "There are no records loaded yet, so I can't answer from data. Load the benchmark or run live ingestion first."
+def _match_topics(q: str, pool: list[dict] | None = None) -> list[dict]:
+    """Rank knowledge topics by keyword hits; ties go to the more specific (longer) matched key."""
+    scored = []
+    for kb in (pool if pool is not None else KNOWLEDGE_BASE):
+        matched = [k for k in kb["keys"] if _match_any(q, [k])]
+        if matched:
+            scored.append((len(matched), max(map(len, matched)), kb))
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+    scored = [(h, kb) for h, _, kb in scored]
+    if not scored:
+        return []
+    return [scored[0][1]] + [kb for hits, kb in scored[1:2] if hits >= 2]
 
-    # --- 1. Understand the question -------------------------------------------------
+
+def _retrieve(q: str, data: pd.DataFrame) -> dict:
+    """Map the question to drivers / products / behaviours and pull the matching records."""
     themes = [t for t, syns in THEME_SYNONYMS.items() if _match_any(q, syns) or t.lower() in q]
     if not themes:  # fall back to the engine's own classifier on the question text
         scored = ec.score_themes(q)
@@ -227,7 +444,6 @@ def answer_question(question: str, data: pd.DataFrame) -> str:
                 + list(BEHAVIOUR_SYNONYMS.values()) for w in syns}
     tokens = [w for w in re.findall(r"[a-z&]{3,}", q) if w not in STOPWORDS and w not in consumed]
 
-    # --- 2. Retrieve -----------------------------------------------------------------
     subset, scope_bits, notes = data, [], []
     if themes:
         subset = subset[subset["Problem Theme"].isin(themes)]
@@ -253,41 +469,79 @@ def answer_question(question: str, data: pd.DataFrame) -> str:
     if subset.empty:
         notes.append("Nothing in the data matched that specifically, so this answer covers all records.")
         subset, scope_bits = data, []
-    n = len(subset)
-    overall = not scope_bits
+    return {"subset": subset, "scope": scope_bits, "notes": notes, "themes": themes, "tokens": tokens,
+            "asks_when": asks_when, "asks_feel": asks_feel, "overall": not scope_bits}
 
-    # --- 3. Compose ------------------------------------------------------------------
+
+def _quotes(ctx: dict, k: int = 3) -> list[str]:
+    subset, tokens, themes, overall = ctx["subset"], ctx["tokens"], ctx["themes"], ctx["overall"]
+    if subset.empty:
+        return []
+
+    def rank(row) -> float:
+        text = str(row["Original Comment"]).lower()
+        s = sum(text.count(t) for t in tokens) * 2
+        s += sum(1 for syns in (THEME_SYNONYMS.get(t, []) for t in themes) for w in syns if w in text)
+        s += 0.5 if "play.google.com" in str(row["Source URL"]) else 0
+        s += min(len(text), 400) / 400  # prefer substantive comments
+        return s
+
+    def fingerprint(text: str) -> str:  # near-duplicate detector (ignores numbers & punctuation)
+        return re.sub(r"[^a-z]+", " ", str(text).lower())[:70]
+
+    ranked = subset.assign(_rank=subset.apply(rank, axis=1)).sort_values("_rank", ascending=False)
+    picks, seen_themes, seen_fp = [], set(), set()
+    for pass_no in (1, 2):  # pass 1 prefers theme diversity; pass 2 fills any remaining slots
+        for _, row in ranked.iterrows():
+            fp = fingerprint(row["Original Comment"])
+            if fp in seen_fp or (pass_no == 1 and overall and row["Problem Theme"] in seen_themes):
+                continue
+            picks.append(row)
+            seen_fp.add(fp)
+            seen_themes.add(row["Problem Theme"])
+            if len(picks) == k:
+                break
+        if len(picks) == k:
+            break
+    out = []
+    for row in picks:
+        url = str(row["Source URL"])
+        label = "Open review ↗" if "play.google.com" in url else "Open source ↗"
+        out.append(f"> “{_esc(_excerpt(row['Original Comment']))}”  \n"
+                   f"> — {row['Product']} · {row['Source Platform']} · [{label}]({url})")
+    return out
+
+
+def _data_answer(ctx: dict, total: int) -> list[str]:
+    subset, n = ctx["subset"], len(ctx["subset"])
     theme_counts = subset["Problem Theme"].value_counts()
     top_theme = theme_counts.index[0]
     addressable = int(subset["Churn Preventability"].isin(ec.ADDRESSABLE_LEVELS).sum())
     out: list[str] = []
 
     ten_all = subset["SIP Tenure (Months)"].dropna()
-    if asks_when and len(ten_all):
+    if ctx["asks_when"] and len(ten_all):
         cliff_n = int(((ten_all >= 10) & (ten_all <= 14)).sum())
-        out.append(f"**Short answer:** most drop-offs cluster in **months 10–14** — {_pct(cliff_n, len(ten_all))} of the "
+        out.append(f"**Short answer:** most drop-offs cluster in **months 10–14**: {_pct(cliff_n, len(ten_all))} of the "
                    f"{len(ten_all)} records that state a tenure (median **{int(ten_all.median())} months**). "
                    f"The leading driver in this view is **{top_theme}**.")
-    elif overall:
+    elif ctx["overall"]:
         out.append(f"**Short answer:** across all **{total}** records, the leading driver of SIP drop-off is "
                    f"**{top_theme}** ({_pct(theme_counts.iloc[0], total)} of records), followed by "
                    + ", ".join(f"**{t}** ({_pct(c, total)})" for t, c in theme_counts.iloc[1:3].items()) + ".")
     else:
         out.append(f"**Short answer:** **{n}** of {total} records ({_pct(n, total)}) relate to "
-                   f"**{', '.join(scope_bits)}**. The dominant driver here is **{top_theme}**, and "
+                   f"**{', '.join(ctx['scope'])}**. The dominant driver here is **{top_theme}**, and "
                    f"{_pct(addressable, n)} of these cases look addressable through product/UX fixes or compliant nudges.")
-    for note in notes:
-        out.append(f"_{note}_")
+    out += [f"_{note}_" for note in ctx["notes"]]
 
-    # Core root causes
     rc = subset["Problem Root Cause"].value_counts().head(3)
     lines = ["**Core root causes in the data**"]
     for i, (cause, c) in enumerate(rc.items(), start=1):
         theme_of = subset.loc[subset["Problem Root Cause"] == cause, "Problem Theme"].mode().iat[0]
-        lines.append(f"{i}. {_esc(cause)} — **{c}** records ({_pct(c, n)}) · _{theme_of}_")
+        lines.append(f"{i}. {_esc(cause)}: **{c}** records ({_pct(c, n)}) · _{theme_of}_")
     out.append("\n".join(lines))
 
-    # Complaint signals (what people actually say)
     phrases = Counter()
     for text in subset["Original Comment"].head(400):
         for p in ec.explain_theme(str(text))["matched"]:
@@ -296,9 +550,8 @@ def answer_question(question: str, data: pd.DataFrame) -> str:
         out.append("**Most frequent complaint signals:** "
                    + ", ".join(f"“{_esc(p)}” ({c})" for p, c in phrases.most_common(6)))
 
-    # Quantitative breakdown
     out.append("**By the numbers**")
-    if overall or len(theme_counts) > 1:
+    if ctx["overall"] or len(theme_counts) > 1:
         table = ["| Driver | Records | Share | Dominant emotion |", "|---|---:|---:|---|"]
         for t, c in theme_counts.head(5).items():
             emo = subset.loc[subset["Problem Theme"] == t, "Investor Emotional Trigger"].mode().iat[0]
@@ -311,61 +564,135 @@ def answer_question(question: str, data: pd.DataFrame) -> str:
         "Emotional triggers: " + ", ".join(f"{e} {_pct(c, n)}" for e, c in emo_all.items()),
         f"Addressable by product/UX or nudges: **{_pct(addressable, n)}** ({addressable} of {n})",
     ]
-    ten = subset["SIP Tenure (Months)"].dropna()
-    if len(ten):
-        cliff = int(((ten >= 10) & (ten <= 14)).sum())
-        bullets.append(f"Timing: {_pct(cliff, len(ten))} of the {len(ten)} records that state a tenure stopped in "
-                       f"months 10–14 (median {int(ten.median())} months)")
-    elif asks_when:
+    if len(ten_all):
+        cliff = int(((ten_all >= 10) & (ten_all <= 14)).sum())
+        bullets.append(f"Timing: {_pct(cliff, len(ten_all))} of the {len(ten_all)} records that state a tenure stopped "
+                       f"in months 10–14 (median {int(ten_all.median())} months)")
+    elif ctx["asks_when"]:
         bullets.append("Timing: none of these records state how long the SIP ran.")
-    if asks_when:
+    if ctx["asks_when"]:
         stages = subset["SIP Stage"].value_counts()
         bullets.append("By stage: " + ", ".join(f"{s} {_pct(c, n)}" for s, c in stages.items()))
-    if asks_feel and len(emo_all):
+    if ctx["asks_feel"] and len(emo_all):
         bullets.insert(0, f"The most common feeling is **{emo_all.index[0]}** ({_pct(emo_all.iloc[0], n)} of records).")
     out.append("\n".join(f"- {b}" for b in bullets))
 
-    # Verbatim quotes — rank by query-term overlap, prefer theme diversity and Play Store links
-    def rank(row) -> float:
-        text = str(row["Original Comment"]).lower()
-        s = sum(text.count(t) for t in tokens) * 2
-        s += sum(1 for syns in (THEME_SYNONYMS.get(t, []) for t in themes) for w in syns if w in text)
-        s += 0.5 if "play.google.com" in str(row["Source URL"]) else 0
-        s += min(len(text), 400) / 400  # prefer substantive comments
-        return s
-    ranked = subset.assign(_rank=subset.apply(rank, axis=1)).sort_values("_rank", ascending=False)
-    def fingerprint(text: str) -> str:  # near-duplicate detector (ignores numbers & punctuation)
-        return re.sub(r"[^a-z]+", " ", str(text).lower())[:70]
-
-    picks, seen_themes, seen_fp = [], set(), set()
-    for pass_no in (1, 2):  # pass 1 prefers theme diversity; pass 2 fills any remaining slots
-        for _, row in ranked.iterrows():
-            fp = fingerprint(row["Original Comment"])
-            if fp in seen_fp or (pass_no == 1 and overall and row["Problem Theme"] in seen_themes):
-                continue
-            picks.append(row)
-            seen_fp.add(fp)
-            seen_themes.add(row["Problem Theme"])
-            if len(picks) == 3:
-                break
-        if len(picks) == 3:
-            break
     out.append("**What investors actually said**")
-    for row in picks:
-        url = str(row["Source URL"])
-        label = "Open review ↗" if "play.google.com" in url else "Open thread ↗"
-        out.append(f"> “{_esc(_excerpt(row['Original Comment']))}”  \n"
-                   f"> — {row['Product']} · {row['Source Platform']} · [{label}]({url})")
+    out += _quotes(ctx, 3)
 
-    # Implication
     fix = subset.loc[subset["Problem Theme"] == top_theme, "Recommended Groww Intervention"].mode()
     if len(fix):
         out.append(f"**What this points to ({top_theme}):** {_esc(fix.iat[0])}")
+    return out
+
+
+def _concept_answer(topics: list[dict], q: str, data: pd.DataFrame) -> list[str]:
+    main = topics[0]
+    out = [f"**{main['topic']}**", f"**Short answer:** {main['short']}",
+           "**Key points**\n" + "\n".join(f"- {p}" for p in main["points"])]
+    if len(topics) > 1 and not topics[1]["topic"].startswith("Neutral factors"):
+        extra = topics[1]
+        out.append(f"**Related: {extra['topic']}**\n- {extra['short']}")
+
+    related = [t for t in main["themes"] if t in set(data["Problem Theme"])]
+    if related:
+        sub = data[data["Problem Theme"].isin(related)]
+        n, total = len(sub), len(data)
+        lines = [f"**What the discovery data shows:** {n} of {total} records ({_pct(n, total)}) fall under "
+                 f"{' / '.join(related)}."]
+        emo = sub["Investor Emotional Trigger"].value_counts()
+        beh = sub["Problem Behaviour"].value_counts()
+        if len(emo):
+            lines.append(f"- Dominant emotion: **{emo.index[0]}** ({_pct(emo.iloc[0], n)})")
+        if len(beh):
+            lines.append("- What investors did: " + ", ".join(f"{b} {_pct(c, n)}" for b, c in beh.head(3).items()))
+        rc = sub["Problem Root Cause"].value_counts()
+        if len(rc):
+            lines.append(f"- Most common root cause: {_esc(rc.index[0])}")
+        out.append("\n".join(lines))
+        ctx = {"subset": sub, "tokens": [w for w in re.findall(r"[a-z]{4,}", q) if w not in STOPWORDS],
+               "themes": related, "overall": False}
+        quotes = _quotes(ctx, 2)
+        if quotes:
+            out.append("**In investors' own words**")
+            out += quotes
+    out.append(f"**Product angle:** {main['product']}")
+    if len(topics) > 1 and topics[1]["topic"].startswith("Neutral factors"):
+        out.append("**Neutral factors to weigh**\n" + "\n".join(f"- {p}" for p in topics[1]["points"]))
+    return out
+
+
+def _solution_answer(data: pd.DataFrame, ctx: dict) -> list[str]:
+    total = len(data)
+    base = ctx["subset"] if ctx["themes"] else data
+    counts = base["Problem Theme"].value_counts().head(4)
+    out = ["**Short answer:** focus on the drivers that are both large and addressable. "
+           f"Across all {total} records, {_pct(int(data['Churn Preventability'].isin(ec.ADDRESSABLE_LEVELS).sum()), total)} "
+           "of drop-offs look addressable through product/UX fixes or compliant nudges."]
+    lines = ["**Where to act, by size of problem**"]
+    for i, (theme, c) in enumerate(counts.items(), start=1):
+        kb = ec.THEME_KB[theme]
+        sub = base[base["Problem Theme"] == theme]
+        addr = _pct(int(sub["Churn Preventability"].isin(ec.ADDRESSABLE_LEVELS).sum()), len(sub))
+        lines.append(f"{i}. **{theme}** ({c} records, {_pct(c, len(base))}; {addr} addressable)  \n"
+                     f"   Fix: {_esc(kb['intervention'])}  \n   Measure: {_esc(kb['nsm'])}")
+    out.append("\n".join(lines))
+    out.append("**Guardrails for every fix**\n"
+               "- No fund or stock recommendations; show investors their own holdings and factual context only.\n"
+               "- No FOMO, fear or urgency copy; cancel always stays one tap away.\n"
+               "- Measure each fix against M12 SIP retention and the instalment success rate, by activation cohort.")
+    ctx = dict(ctx, subset=base[base["Problem Theme"].isin(counts.index[:2])], overall=False)
+    quotes = _quotes(ctx, 2)
+    if quotes:
+        out.append("**The friction in investors' words**")
+        out += quotes
+    return out
+
+
+def answer_question(question: str, data: pd.DataFrame) -> str:
+    """Hybrid answer: dataset evidence + built-in domain knowledge. No external API needed."""
+    q = question.lower().strip()
+    total = len(data)
+    if not q:
+        return "Ask me anything about SIP drop-offs, for example “Why do people pause their SIPs?”"
+    if total == 0:
+        return "No records are loaded yet. Load the benchmark corpus or run live ingestion first."
+
+    out: list[str] = []
+    if ADVICE_PATTERN.search(q):
+        out.append("_I can't recommend specific funds or tell you whether to buy, sell, stop or continue an "
+                   "investment. Here is neutral context that may help, and a registered adviser can help with "
+                   "personal decisions._")
+
+    topics = _match_topics(q)
+    ctx = _retrieve(q, data)
+    is_advice = bool(ADVICE_PATTERN.search(q))
+    is_concept = bool(topics) and bool(CONCEPT_PATTERN.search(q)) and not DATA_CUE_PATTERN.search(q)
+
+    if is_advice:
+        # Personal-decision questions get neutral context, never a data dump or a recommendation.
+        neutral = next(kb for kb in KNOWLEDGE_BASE if kb["topic"].startswith("Neutral factors"))
+        # Prefer the substantive topic (e.g. market falls) over generic words like "stop" when both match.
+        pool = [kb for kb in KNOWLEDGE_BASE if kb is not neutral]
+        topical = _match_topics(q, [kb for kb in pool if not kb["topic"].startswith("Pausing")]) or _match_topics(q, pool)
+        out += _concept_answer(topical[:1] + [neutral] if topical else [neutral], q, data)
+    elif SOLUTION_PATTERN.search(q) and not CONCEPT_PATTERN.search(q):
+        out += _solution_answer(data, ctx)
+    elif is_concept:
+        out += _concept_answer(topics, q, data)
+    else:
+        out += _data_answer(ctx, total)
+        if topics:
+            t = topics[0]
+            out.append(f"**Background: {t['topic']}**\n- {t['short']}\n" + "\n".join(f"- {p}" for p in t["points"][:2]))
+        elif ctx["overall"] and not ctx["asks_when"] and not ctx["themes"]:
+            out.insert(0, "_I didn't find a specific match for that, so here is the overall picture. Try asking about "
+                          "a driver (e.g. auto-debit, returns, market falls), a behaviour (pause, cancel) or a concept._")
     return "\n\n".join(out)
 
 
 # ---------------------------------------------------------------------------
-# Header + live keyword search
+# Header + top chat card
 # ---------------------------------------------------------------------------
 st.markdown(
     """
@@ -379,8 +706,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
-keyword = st.text_input("🔍 Search Reviews by Keyword:", placeholder="e.g., cancel, pause, bounce, xirr, ...",
-                        key="review_keyword").strip()
+chat_slot = st.container()  # filled once the dataset is resolved, but rendered right here under the header
 
 c1, c2, c3, c4 = st.columns(4)
 c1.markdown(card("North-Star Target", "↑ M12 SIP Retention", "Share of SIPs still active 12 months after activation", True), unsafe_allow_html=True)
@@ -395,6 +721,71 @@ with st.expander("⚙️ Engine methodology", expanded=False):
     m3.markdown('<div class="step"><b>3 · Enrich</b><br><span>Explainable weighted-lexicon NLP assigns 1 of 8 drivers, then extracts tenure, behaviour, emotion and preventability.</span></div>', unsafe_allow_html=True)
     m4.markdown('<div class="step"><b>4 · Synthesise</b><br><span>Drop-off curve, driver sizing, preventability and stage splits, plus an Excel workbook with live formulas.</span></div>', unsafe_allow_html=True)
     st.caption("Classifier rules live in `engine_core.THEME_KB` — every assignment can be traced to the phrases that triggered it.")
+
+# ---------------------------------------------------------------------------
+# Chat card renderer
+# ---------------------------------------------------------------------------
+def render_chat(data: pd.DataFrame, source_note: str = "") -> None:
+    with chat_slot:
+        st.markdown(
+            '<div class="chat-head"><h3>💬 How can I help you?</h3><span>Ask any question regarding SIP churn, '
+            'investor behavior, drop-off root causes, or product solutions.</span></div>',
+            unsafe_allow_html=True,
+        )
+        if "chat_history" not in st.session_state:
+            st.session_state["chat_history"] = []
+
+        pill_cols = st.columns(len(SUGGESTED_QUESTIONS))
+        for i, sq in enumerate(SUGGESTED_QUESTIONS):
+            if pill_cols[i].button(sq, key=f"suggest_{i}", use_container_width=True):
+                st.session_state["pending_question"] = sq
+
+        with st.form("ask_form", clear_on_submit=True, border=False) if _form_supports_border() else                 st.form("ask_form", clear_on_submit=True):
+            in_col, btn_col = st.columns([8, 1])
+            typed = in_col.text_input(
+                "Your question", label_visibility="collapsed", key="ask_text",
+                placeholder="Ask a question about SIP drop-offs, cancellations, investor friction, or product fixes...")
+            asked = btn_col.form_submit_button("Ask", type="primary", use_container_width=True)
+
+        question = (typed.strip() if asked and typed and typed.strip() else None)             or st.session_state.pop("pending_question", None)
+        if question:
+            try:
+                reply = answer_question(question, data)
+            except Exception as exc:  # never surface a stack trace to evaluators
+                reply = (f"I couldn't analyse that question ({type(exc).__name__}). Try rephrasing, "
+                         "e.g. “Why do people pause SIPs?”")
+            st.session_state["chat_history"].append({"q": question, "a": reply})
+            st.session_state["chat_history"] = st.session_state["chat_history"][-10:]
+
+        history = st.session_state["chat_history"]
+        if history:
+            latest = history[-1]
+            with st.chat_message("user", avatar="🧑‍💼"):
+                st.markdown(_esc(latest["q"]))
+            with st.chat_message("assistant", avatar="📈"):
+                st.markdown(latest["a"])
+            footer_l, footer_r = st.columns([5, 1])
+            footer_l.caption(f"Answers combine the full {len(data):,}-record discovery dataset with built-in SIP domain "
+                             f"knowledge. {source_note}")
+            if footer_r.button("Clear chat", key="clear_chat", use_container_width=True):
+                st.session_state["chat_history"] = []
+                st.rerun()
+            if len(history) > 1:
+                with st.expander(f"Earlier questions ({len(history) - 1})"):
+                    for item in reversed(history[:-1]):
+                        st.markdown(f"**Q: {_esc(item['q'])}**")
+                        st.markdown(item["a"])
+                        st.divider()
+        st.write("")
+
+
+def _form_supports_border() -> bool:
+    import inspect
+    try:
+        return "border" in inspect.signature(st.form).parameters
+    except (TypeError, ValueError):
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Sidebar — control panel
@@ -452,6 +843,7 @@ with st.sidebar:
 if live_mode:
     live = st.session_state.get("live")
     if not live:
+        render_chat(bench_df, "Live ingestion hasn't run yet, so answers use the benchmark corpus.")
         st.info("👈 Configure sources in the sidebar and press **Run Live Ingestion**. "
                 "Switch to the **Benchmark Corpus** for an instant, zero-latency review.")
         st.stop()
@@ -475,6 +867,7 @@ if live_mode:
         st.caption("Reddit throttles anonymous traffic and often blocks cloud IP ranges. Play Store package "
                    "IDs are verified before scraping and re-resolved by name if wrong.")
     if df_all.empty:
+        render_chat(bench_df, "This live run returned no records, so answers use the benchmark corpus.")
         st.warning("This live run returned no SIP-churn records (most app reviews are not about SIPs). "
                    "Try more reviews per app, or switch to the Benchmark Corpus in the sidebar.")
         st.stop()
@@ -499,7 +892,7 @@ else:
                     f'{bench_meta.get("error", "")} {ec.DEMO_PROVENANCE}</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# Filters (keyword search above + driver filters here)
+# Filters
 # ---------------------------------------------------------------------------
 df_all = df_all.copy()
 # Columns actually present in the dataset drive what the table shows; any schema
@@ -522,9 +915,9 @@ sel_stage = f3.multiselect("SIP Stage", present("SIP Stage", ec.STAGES + ["Unkno
 sel_prev = f4.multiselect("Churn Preventability", present("Churn Preventability", ec.PREVENTABILITY_LEVELS),
                           placeholder="All levels", key="f_prev")
 
+render_chat(df_all)
+
 df = df_all
-if keyword:
-    df = df[keyword_mask(df, keyword)]
 if sel_theme:
     df = df[df["Problem Theme"].isin(sel_theme)]
 if sel_band:
@@ -544,8 +937,7 @@ PLOT_LAYOUT = dict(
 
 def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
     k1, k2, k3, k4, k5 = st.columns(5)
-    k1.markdown(card("Records in view", f"{summary['n']:,}", f"of {len(df_all):,} analysed"
-                     + (f" · “{keyword}”" if keyword else "")), unsafe_allow_html=True)
+    k1.markdown(card("Records in view", f"{summary['n']:,}", f"of {len(df_all):,} analysed"), unsafe_allow_html=True)
     k2.markdown(card("Churn in M10–14 cliff", f"{summary['cliff_share']:.0%}",
                      f"{summary['cliff']} of {summary['known_tenure']} with stated tenure", True), unsafe_allow_html=True)
     k3.markdown(card("Addressable by Product & Nudges", f"{summary['addressable_share']:.0%}",
@@ -668,8 +1060,11 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
             f"addressable through Product/UX fixes or compliant FinTech nudges ({verdict} the 75% hypothesis).")
 
     with tab_table:
-        st.caption(f"{len(df):,} of {len(df_all):,} records" + (f" matching “{keyword}”" if keyword else "")
-                   + " · use the keyword search under the title to narrow further · click a Source URL to open the original.")
+        keyword = st.text_input("🔍 Search Reviews by Keyword:", placeholder="e.g., cancel, pause, bounce, xirr, ...",
+                                key="review_keyword").strip()
+        table_df = df[keyword_mask(df, keyword)] if keyword else df
+        st.caption(f"{len(table_df):,} of {len(df):,} records" + (f" matching “{keyword}”" if keyword else "")
+                   + " · searches comment, theme and product · click a Source URL to open the original.")
         column_config = {
             "Source URL": st.column_config.LinkColumn("Source URL", display_text="Open source ↗"),
             "Original Comment": st.column_config.TextColumn("Original Comment", width="large"),
@@ -678,9 +1073,13 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
             "Problem Root Cause": st.column_config.TextColumn(width="large"),
         }
         column_config = {k: v for k, v in column_config.items() if k in display_cols}
-        stretch(st.dataframe, df[display_cols], hide_index=True, height=560, column_config=column_config)
-        st.download_button("Download filtered view (.csv)", df[display_cols].to_csv(index=False).encode("utf-8"),
-                           file_name="sip_discovery_filtered.csv", mime="text/csv", key="csv_download")
+        if table_df.empty:
+            st.info("No reviews match this keyword. Try a broader term.")
+        else:
+            stretch(st.dataframe, table_df[display_cols], hide_index=True, height=560, column_config=column_config)
+        st.download_button("Download filtered view (.csv)", table_df[display_cols].to_csv(index=False).encode("utf-8"),
+                           file_name="sip_discovery_filtered.csv", mime="text/csv", key="csv_download",
+                           disabled=table_df.empty)
 
     with tab_export:
         st.markdown("#### Discovery Workbook")
@@ -702,48 +1101,9 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
 
 summary = ec.summarize(df)
 if summary["n"] == 0:
-    st.warning("No records match the current keyword and filters. Clear the search box or widen the filters.")
+    st.warning("No records match the current filters. Widen the filters to see the dashboard.")
 else:
     render_dashboard(df, summary)
-
-# ---------------------------------------------------------------------------
-# Ask the Data — conversational Q&A over the loaded dataset
-# ---------------------------------------------------------------------------
-st.markdown(
-    '<div class="chat-head"><h3>💬 Ask the Data</h3><span>Ask in plain English. Answers are built instantly from the '
-    'loaded records — root causes, counts and real quotes with links. No external AI service or API key involved.</span></div>',
-    unsafe_allow_html=True,
-)
-if "chat_history" not in st.session_state:
-    st.session_state["chat_history"] = []
-
-q_cols = st.columns(len(SUGGESTED_QUESTIONS) + 1)
-for i, sq in enumerate(SUGGESTED_QUESTIONS):
-    if q_cols[i].button(sq, key=f"suggest_{i}", use_container_width=True):
-        st.session_state["pending_question"] = sq
-if q_cols[-1].button("🗑️ Clear chat", key="clear_chat", use_container_width=True):
-    st.session_state["chat_history"] = []
-scope_to_filters = st.toggle("Answer only from the current keyword/filter view", value=False, key="chat_scope") \
-    if hasattr(st, "toggle") else st.checkbox("Answer only from the current keyword/filter view", key="chat_scope")
-
-typed = st.chat_input("Ask a question about investor SIP drop-offs (e.g. 'Why do people cancel SIP?', "
-                      "'What are the top bank auto-debit complaints?')", key="chat_box")
-question = typed or st.session_state.pop("pending_question", None)
-if question:
-    source = df if scope_to_filters else df_all
-    try:
-        reply = answer_question(question, source)
-    except Exception as exc:  # never surface a stack trace to evaluators
-        reply = f"I couldn't analyse that question ({type(exc).__name__}). Try rephrasing, e.g. “Why do people pause SIPs?”"
-    st.session_state["chat_history"].append({"role": "user", "content": question})
-    st.session_state["chat_history"].append({"role": "assistant", "content": reply})
-    st.session_state["chat_history"] = st.session_state["chat_history"][-20:]
-
-for msg in st.session_state["chat_history"]:
-    with st.chat_message(msg["role"], avatar="🧑‍💼" if msg["role"] == "user" else "📈"):
-        st.markdown(msg["content"])
-if not st.session_state["chat_history"]:
-    st.caption("Try a suggested question above, or type your own in the box at the bottom of the page.")
 
 st.markdown(
     '<div class="footer"><b>Compliance:</b> Built from public web conversations only; no private user data, '
