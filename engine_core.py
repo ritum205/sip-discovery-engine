@@ -47,7 +47,6 @@ COLUMNS = [
     "Original Comment",
     "User Type",
     "SIP Tenure (Months)",
-    "Monthly SIP Amount (INR)",
     "SIP Stage",
     "Problem Theme",
     "Problem Behaviour",
@@ -527,7 +526,6 @@ def enrich_record(product: str, platform: str, url: str, comment: str,
         "Original Comment": clean,
         "User Type": detect_user_type(clean, platform),
         "SIP Tenure (Months)": tenure,
-        "Monthly SIP Amount (INR)": extract_sip_amount(clean),
         "SIP Stage": stage_for_tenure(tenure),
         "Problem Theme": theme,
         "Problem Behaviour": detect_behaviour(clean, theme),
@@ -550,11 +548,6 @@ def enrich_records(raw: Iterable[dict]) -> pd.DataFrame:
         df = df.drop_duplicates(subset=["Original Comment"]).reset_index(drop=True)
     return _coerce_types(df)
 
-
-def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
-    for col in ["SIP Tenure (Months)", "Monthly SIP Amount (INR)"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
-    return df
 
 
 # ---------------------------------------------------------------------------
@@ -1044,7 +1037,7 @@ def build_benchmark_corpus(seed: int = 2026) -> pd.DataFrame:
                     ["First-time MF investor", "First-time MF investor", "Salaried first-jobber (22–27)",
                      "Tier-2/3 first-time investor", "Gig / variable-income earner"]),
                 "SIP Tenure (Months)": tenure,
-                "Monthly SIP Amount (INR)": amount,
+             
                 "SIP Stage": stage_for_tenure(tenure),
                 "Problem Theme": theme,
                 "Problem Behaviour": detect_behaviour(text, theme),
@@ -1091,12 +1084,12 @@ def summarize(df: pd.DataFrame) -> dict:
         if sub.empty:
             continue
         emo = Counter(sub["Investor Emotional Trigger"]).most_common(1)[0][0]
-        avg = sub["Monthly SIP Amount (INR)"].dropna()
+    
         themes.append({
             "Problem Theme": theme,
             "Records": len(sub),
             "Share": len(sub) / n,
-            "Avg Monthly SIP (INR)": float(avg.mean()) if len(avg) else None,
+           
             "Median Tenure (Months)": float(sub["SIP Tenure (Months)"].dropna().median()) if sub["SIP Tenure (Months)"].notna().any() else None,
             "Dominant Emotion": emo,
             "Addressable Share": float(sub["Churn Preventability"].isin(ADDRESSABLE_LEVELS).mean()),
@@ -1110,7 +1103,7 @@ def summarize(df: pd.DataFrame) -> dict:
         "known_tenure": known_tenure,
         "addressable": addressable,
         "addressable_share": addressable / n,
-        "avg_sip": float(df["Monthly SIP Amount (INR)"].dropna().mean()) if df["Monthly SIP Amount (INR)"].notna().any() else None,
+
         "themes": theme_df,
         "top_theme": theme_df.iloc[0]["Problem Theme"] if not theme_df.empty else "—",
     }
@@ -1293,7 +1286,7 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
     # Driver breakdown
     row = 14
     section(row - 1, "Chart 2 · Root-Cause Driver Breakdown")
-    header_row(row, ["Problem Theme", "Records", "% Share", "Avg Monthly SIP (INR)",
+    header_row(row, ["Problem Theme", "Records", "% Share",
                      "Dominant Emotion*", "Addressable Records", "Recommended Groww Intervention"])
     summ = summarize(df)
     emo_map = {}
