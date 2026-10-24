@@ -8,6 +8,7 @@ Deploy:        Streamlit Community Cloud → New app → this repo → app.py
 
 from __future__ import annotations
 
+import os
 import re
 from collections import Counter
 from datetime import datetime
@@ -15,6 +16,7 @@ from datetime import datetime
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 
 import engine_core as ec
@@ -76,10 +78,6 @@ st.markdown(
   .step span {{ color: #5A6B82; font-size: 0.86rem; }}
   .notice {{ background: #FFF8E6; border: 1px solid #F2D58A; color: #6B5100; border-radius: 10px;
             padding: 10px 14px; font-size: 0.86rem; margin: 6px 0 14px 0; }}
-  .chat-head {{ background: #fff; border: 1px solid #E3E8EF; border-left: 5px solid {EMERALD}; border-radius: 14px;
-               padding: 14px 18px; margin: 0 0 10px 0; box-shadow: 0 1px 2px rgba(27,54,93,0.04); }}
-  .chat-head h3 {{ color: {NAVY}; margin: 0 0 2px 0; }}
-  .chat-head span {{ color: #5A6B82; font-size: 0.9rem; }}
   div[data-testid="stForm"] {{ border: 1px solid #E3E8EF; border-radius: 12px; padding: 10px 14px 4px 14px; }}
   .footer {{ color: #5A6B82; font-size: 0.8rem; border-top: 1px solid #E3E8EF; padding-top: 12px; margin-top: 28px; }}
   [data-testid="stSidebar"] {{ background: {LIGHT}; }}
@@ -192,7 +190,7 @@ SUGGESTED_QUESTIONS = [
 KNOWLEDGE_BASE = [
     {
         "topic": "Pausing vs cancelling a SIP",
-        "keys": ["pause", "cancel", "stop", "skip", "restart", "resume"],
+        "keys": ["pause", "pausing", "cancel", "stop", "stopping", "skip", "restart", "resume", "better"],
         "themes": ["Liquidity Shortage", "Market Correction Panic"],
         "short": "Pausing skips a few instalments and keeps the SIP set up; cancelling ends all future instalments. "
                  "In both cases, the units already bought stay invested.",
@@ -204,6 +202,9 @@ KNOWLEDGE_BASE = [
             "**Missed instalments:** a fund house typically doesn't fine you for one, but the bank may charge a fee if a "
             "debit fails for low balance. Many fund houses cancel a SIP after a few consecutive failed debits.",
             "**Redeeming** is different again: it sells units and takes money out of the investment.",
+            "**Which is better?** It depends on why. For a temporary cash crunch or short-term worry, a pause keeps "
+            "the habit and set-up intact. If the goal has changed or the SIP was never right for the investor, "
+            "cancelling is a reasonable, deliberate choice. Neither is universally better.",
         ],
         "product": "When ‘continue’ and ‘cancel’ are the only visible options, a temporary cash crunch turns into "
                    "permanent churn. Showing pause or step-down at the moment of cancellation keeps the habit alive "
@@ -268,14 +269,21 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "How SIP auto-debit works (mandates)",
-        "keys": ["mandate", "nach", "enach", "autopay", "auto pay", "auto-debit", "auto debit", "debit", "bounce",
-                 "bank", "upi"],
+        "keys": ["mandate", "nach", "enach", "e-nach", "autopay", "auto pay", "auto-debit", "auto debit", "debit",
+                 "bounce", "bank", "upi", "limit", "limits", "otp"],
         "themes": ["Bank & Auto-Debit Friction"],
         "short": "A SIP is debited through a standing instruction on the investor's bank account (e-NACH or UPI "
                  "AutoPay). Most failures come from timing, balance or a broken or expired mandate.",
         "points": [
             "**Set-up:** the investor authorises a mandate with a maximum amount. The platform then debits each "
-            "instalment on the SIP date.",
+            "instalment on the SIP date, as long as it is within that maximum. Raising the SIP above the mandate "
+            "limit needs a new or modified mandate.",
+            "**e-NACH** mandates are registered through net banking or a debit card and typically allow higher "
+            "maximum amounts. Registration can take a few working days.",
+            "**UPI AutoPay limits (2026 rules):** after the first authenticated payment, recurring debits go through "
+            "without a fresh OTP up to ₹15,000 per transaction generally, and up to ₹1 lakh for mutual fund "
+            "subscriptions, insurance premiums and credit card bills. Banks must send a pre-debit notice at least "
+            "24 hours before each debit. Limits change, so check current RBI and NPCI rules.",
             "**Low balance on the debit date** causes a failed instalment. Banks may charge a return or bounce fee.",
             "**Bank-account changes, mandate expiry or limit mismatches** silently break future debits unless the "
             "investor re-registers.",
@@ -331,7 +339,7 @@ KNOWLEDGE_BASE = [
     },
     {
         "topic": "Lock-ins, exit loads and redemption timing",
-        "keys": ["exit load", "lock-in", "lock in", "elss", "redeem", "redemption", "withdraw", "tax"],
+        "keys": ["exit load", "lock-in", "lock in", "elss", "redeem", "redemption", "withdraw"],
         "themes": ["Liquidity Shortage", "Disappointment Valley"],
         "short": "Some funds restrict or charge for early withdrawals, and holding period affects how gains are taxed. "
                  "Check the scheme documents and current tax rules.",
@@ -344,6 +352,65 @@ KNOWLEDGE_BASE = [
         ],
         "product": "Clear, factual disclosure of lock-in and exit-load dates on the redemption screen prevents "
                    "surprises that erode trust.",
+    },
+    {
+        "topic": "What a SIP is and how it works",
+        "keys": ["what is a sip", "what is sip", "systematic investment", "how does sip", "how sip works", "sip work",
+                 "sip mean", "sip basics"],
+        "themes": [],
+        "short": "A Systematic Investment Plan (SIP) invests a fixed amount in a mutual fund at regular intervals, "
+                 "usually monthly, through an automatic bank debit.",
+        "points": [
+            "Each instalment buys units at that day's NAV (net asset value), so the number of units varies "
+            "with the price.",
+            "The investor chooses the amount, frequency, date and duration, and can usually pause, modify or "
+            "cancel the SIP.",
+            "Because it is automatic, a SIP builds a habit and removes the need to time the market. Like any "
+            "market-linked investment, returns are not guaranteed.",
+        ],
+        "product": "The automation that makes SIPs effective also makes failures silent, so clear status, receipts "
+                   "and pre-debit reminders matter for trust.",
+    },
+    {
+        "topic": "Compounding and the cost of interrupting a SIP",
+        "keys": ["compound", "compounding", "long term", "long-term", "power of", "interrupt", "missing", "missed",
+                 "cost of stopping", "how much", "wealth"],
+        "themes": ["Disappointment Valley", "Liquidity Shortage"],
+        "short": "Compounding means gains themselves start earning returns, so most of a long SIP's growth arrives "
+                 "in the later years. Interruptions early on have an outsized effect on the end value.",
+        "points": [
+            "**Illustration (assumed 10% a year, not a forecast):** ₹5,000 a month for 10 years (₹6 lakh invested) "
+            "grows to about ₹10.3 lakh.",
+            "**Stopping after year one:** the ₹60,000 invested, left alone for the remaining nine years, grows to "
+            "about ₹1.55 lakh at the same assumed rate.",
+            "**Pausing for six months instead:** ₹5.7 lakh invested grows to about ₹9.6 lakh. Most of the long-term "
+            "outcome is preserved.",
+            "Actual returns vary and can be negative; the illustration only shows how time in the market affects "
+            "outcomes under a fixed assumption.",
+        ],
+        "product": "Showing investors this trade-off at the cancellation moment, framed neutrally and with clear "
+                   "assumptions, makes pause or step-down a visible alternative without creating fear.",
+    },
+    {
+        "topic": "How SIP redemptions are taxed (India)",
+        "keys": ["tax", "taxed", "taxation", "ltcg", "stcg", "capital gain", "capital gains", "112a", "fifo"],
+        "weight": 3,  # a tax word almost always means a tax question
+        "themes": [],
+        "short": "Each SIP instalment is treated as a separate purchase, so its holding period and tax are worked "
+                 "out instalment by instalment, oldest units first (FIFO).",
+        "points": [
+            "**Equity-oriented funds, held over 12 months (LTCG):** 12.5% on gains above ₹1.25 lakh a year in "
+            "total, without indexation.",
+            "**Equity-oriented funds, held 12 months or less (STCG):** 20%.",
+            "**Debt funds bought on or after 1 April 2023:** gains are taxed at the investor's income-tax slab "
+            "rate, whatever the holding period.",
+            "**SIP effect:** redeeming a whole SIP corpus after one year usually mixes long-term and short-term "
+            "units, because recent instalments are still under 12 months old.",
+            "These are the rates for FY 2026-27 (unchanged in Budget 2026). Tax rules change, so verify the "
+            "current position or ask a tax adviser.",
+        ],
+        "product": "Showing the estimated short-term vs long-term split before redemption helps investors avoid "
+                   "surprises, without advising them what to do.",
     },
     {
         "topic": "Neutral factors investors weigh (not a recommendation)",
@@ -386,9 +453,10 @@ ADVICE_PATTERN = re.compile(r"\b(which|best|top|good)\s+(mutual\s+)?funds?\b|\bs
 SOLUTION_PATTERN = re.compile(r"\b(fix|fixes|solve|solution|solutions|reduce|prevent|improve|product (fix|fixes|"
                               r"solution|solutions|change|changes|idea|ideas)|feature|features|intervention|"
                               r"interventions|what can groww|how can groww|how should groww)\b", re.I)
-CONCEPT_PATTERN = re.compile(r"\b(what is|what's|explain|how does|how do .* work|difference|vs\.?|versus|"
-                             r"meaning|concept|psycholog|mechanism|why does|how (do|should|can) (we|i|you) "
-                             r"(measure|track|calculate|think))\b", re.I)
+CONCEPT_PATTERN = re.compile(r"\b(what is|what's|what are the rules|explain|how does|how do .* work|how (is|are) .* tax|tax on|taxed|"
+                             r"difference|vs\.?|versus|better|meaning|concept|psycholog|mechanism|why does|"
+                             r"what happens|is it (good|bad|wise|okay)|how (much|long)|"
+                             r"how (do|should|can) (we|i|you) (measure|track|calculate|think))\b", re.I)
 DATA_CUE_PATTERN = re.compile(r"\b(top|most common|complaints?|friction points?|what do (investors|users|people) say|"
                               r"how many|percentage|share of|reviews?|quotes?|examples?|data)\b", re.I)
 
@@ -421,7 +489,7 @@ def _match_topics(q: str, pool: list[dict] | None = None) -> list[dict]:
     for kb in (pool if pool is not None else KNOWLEDGE_BASE):
         matched = [k for k in kb["keys"] if _match_any(q, [k])]
         if matched:
-            scored.append((len(matched), max(map(len, matched)), kb))
+            scored.append((len(matched) * kb.get("weight", 1), max(map(len, matched)), kb))
     scored.sort(key=lambda x: (-x[0], -x[1]))
     scored = [(h, kb) for h, _, kb in scored]
     if not scored:
@@ -649,46 +717,174 @@ def _solution_answer(data: pd.DataFrame, ctx: dict) -> list[str]:
     return out
 
 
-def answer_question(question: str, data: pd.DataFrame) -> str:
-    """Hybrid answer: dataset evidence + built-in domain knowledge. No external API needed."""
+def answer_question(question: str, data: pd.DataFrame) -> tuple[str, str]:
+    """Built-in answer: dataset evidence + domain knowledge. Returns (markdown, kind) where kind is one of
+    'data', 'knowledge', 'solution', 'advice' or 'nomatch'. Works with no network or API key."""
     q = question.lower().strip()
     total = len(data)
     if not q:
-        return "Ask me anything about SIP drop-offs, for example “Why do people pause their SIPs?”"
+        return "Ask me anything about SIP drop-offs, for example “Why do people pause their SIPs?”", "nomatch"
     if total == 0:
-        return "No records are loaded yet. Load the benchmark corpus or run live ingestion first."
+        return "No records are loaded yet. Load the benchmark corpus or run live ingestion first.", "nomatch"
 
     out: list[str] = []
-    if ADVICE_PATTERN.search(q):
-        out.append("_I can't recommend specific funds or tell you whether to buy, sell, stop or continue an "
-                   "investment. Here is neutral context that may help, and a registered adviser can help with "
-                   "personal decisions._")
-
     topics = _match_topics(q)
     ctx = _retrieve(q, data)
     is_advice = bool(ADVICE_PATTERN.search(q))
     is_concept = bool(topics) and bool(CONCEPT_PATTERN.search(q)) and not DATA_CUE_PATTERN.search(q)
 
     if is_advice:
+        out.append("_I can't recommend specific funds or tell you whether to buy, sell, stop or continue an "
+                   "investment. Here is neutral context that may help, and a registered adviser can help with "
+                   "personal decisions._")
         # Personal-decision questions get neutral context, never a data dump or a recommendation.
         neutral = next(kb for kb in KNOWLEDGE_BASE if kb["topic"].startswith("Neutral factors"))
         # Prefer the substantive topic (e.g. market falls) over generic words like "stop" when both match.
         pool = [kb for kb in KNOWLEDGE_BASE if kb is not neutral]
         topical = _match_topics(q, [kb for kb in pool if not kb["topic"].startswith("Pausing")]) or _match_topics(q, pool)
         out += _concept_answer(topical[:1] + [neutral] if topical else [neutral], q, data)
-    elif SOLUTION_PATTERN.search(q) and not CONCEPT_PATTERN.search(q):
-        out += _solution_answer(data, ctx)
-    elif is_concept:
-        out += _concept_answer(topics, q, data)
-    else:
-        out += _data_answer(ctx, total)
-        if topics:
-            t = topics[0]
-            out.append(f"**Background: {t['topic']}**\n- {t['short']}\n" + "\n".join(f"- {p}" for p in t["points"][:2]))
-        elif ctx["overall"] and not ctx["asks_when"] and not ctx["themes"]:
-            out.insert(0, "_I didn't find a specific match for that, so here is the overall picture. Try asking about "
-                          "a driver (e.g. auto-debit, returns, market falls), a behaviour (pause, cancel) or a concept._")
-    return "\n\n".join(out)
+        return "\n\n".join(out), "advice"
+    if SOLUTION_PATTERN.search(q) and not CONCEPT_PATTERN.search(q):
+        return "\n\n".join(_solution_answer(data, ctx)), "solution"
+    if is_concept:
+        return "\n\n".join(_concept_answer(topics, q, data)), "knowledge"
+
+    nothing_matched = ctx["overall"] and not ctx["asks_when"] and not ctx["themes"] and not topics
+    out += _data_answer(ctx, total)
+    if topics:
+        t = topics[0]
+        out.append(f"**Background: {t['topic']}**\n- {t['short']}\n" + "\n".join(f"- {p}" for p in t["points"][:2]))
+    if nothing_matched:
+        out.insert(0, "_I didn't find a specific match for that, so here is the overall picture. Try asking about "
+                      "a driver (e.g. auto-debit, returns, market falls), a behaviour (pause, cancel) or a concept._")
+        return "\n\n".join(out), "nomatch"
+    return "\n\n".join(out), "data"
+
+
+# ---------------------------------------------------------------------------
+# Optional external knowledge: Wikipedia lookup (free, no key) and an LLM
+# (Anthropic Claude via API key in Streamlit secrets). Both are optional and
+# fail silently back to the built-in answer.
+# ---------------------------------------------------------------------------
+FINANCE_WORDS = re.compile(r"\b(invest|fund|financ|payment|bank|tax|return|market|interest|stock|equity|bond|"
+                           r"debit|mandate|portfolio|asset|price|rate|loan|saving|india)", re.I)
+HTTP_HEADERS = {"User-Agent": "GrowwSIPDiscoveryEngine/1.0 (educational research app)"}
+
+
+def _secret(name: str, default: str = "") -> str:
+    try:
+        val = st.secrets.get(name)  # raises if no secrets file exists
+        if val:
+            return str(val)
+    except Exception:
+        pass
+    return os.environ.get(name, default)
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def web_lookup(question: str) -> dict | None:
+    """Look up a general concept on Wikipedia. Returns {title, extract, url} only when the page is
+    clearly finance-related and mentions a term from the question; otherwise None."""
+    terms = [w for w in re.findall(r"[a-z0-9&-]{3,}", question.lower()) if w not in STOPWORDS]
+    if not terms:
+        return None
+    try:
+        r = requests.get("https://en.wikipedia.org/w/rest.php/v1/search/page",
+                         params={"q": " ".join(terms[:6]), "limit": 4}, headers=HTTP_HEADERS, timeout=8)
+        pages = r.json().get("pages", []) if r.ok else []
+        for page in pages:
+            sr = requests.get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{page['key']}",
+                              headers=HTTP_HEADERS, timeout=8)
+            if not sr.ok:
+                continue
+            js = sr.json()
+            extract = js.get("extract", "")
+            text = (js.get("title", "") + " " + extract).lower()
+            if js.get("type") == "disambiguation" or not FINANCE_WORDS.search(text):
+                continue
+            if not any(t in text for t in terms):
+                continue
+            url = js.get("content_urls", {}).get("desktop", {}).get("page", f"https://en.wikipedia.org/wiki/{page['key']}")
+            return {"title": js.get("title", page.get("title", "")), "extract": _excerpt(extract, 700), "url": url}
+    except Exception:
+        return None
+    return None
+
+
+LLM_SYSTEM_PROMPT = """You are the assistant inside the Groww SIP Discovery Engine, an internal product-discovery tool
+about why Indian mutual-fund investors stop, pause or break their SIPs.
+Rules:
+- For any statistic about reviews, use ONLY the numbers in DATA CONTEXT. Never invent counts, percentages or quotes.
+- You may use general, accurate knowledge about SIPs and Indian mutual funds (NAV, mandates, XIRR, compounding,
+  taxation, SEBI/AMFI norms). Where rules can change (tax, limits), say so briefly.
+- Never recommend a specific fund, stock or AMC, and never tell the reader to buy, sell, stop or continue an
+  investment. No FOMO, fear or urgency language.
+- Do not include quotes or links; verified review quotes are appended automatically after your answer.
+- Write for a product leader: start with a one-line **Short answer**, then concise bullet points, then a
+  **Product angle** line when relevant. Use markdown. Stay under 300 words."""
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def _llm_call(question: str, context: str, model: str) -> str | None:
+    key = _secret("ANTHROPIC_API_KEY")
+    if not key:
+        return None
+    try:
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+            json={"model": model, "max_tokens": 900, "system": LLM_SYSTEM_PROMPT,
+                  "messages": [{"role": "user", "content": f"QUESTION: {question}\n\n{context}"}]},
+            timeout=45,
+        )
+        if not r.ok:
+            return None
+        text = "".join(b.get("text", "") for b in r.json().get("content", []) if b.get("type") == "text").strip()
+        return text or None
+    except Exception:
+        return None
+
+
+def llm_enabled() -> bool:
+    return bool(_secret("ANTHROPIC_API_KEY"))
+
+
+def respond(question: str, data: pd.DataFrame) -> tuple[str, str]:
+    """Final answer = (optional LLM synthesis or built-in answer) + optional Wikipedia context.
+    Returns (markdown, source label)."""
+    builtin, kind = answer_question(question, data)
+    q = question.strip()
+    if not q or data.empty:
+        return builtin, "Built-in"
+
+    web = web_lookup(q) if kind == "nomatch" else None
+    web_md = (f"**From the web: {web['title']} (Wikipedia)**\n\n> {_esc(web['extract'])}\n\n"
+              f"[Read more on Wikipedia ↗]({web['url']})") if web else ""
+
+    if llm_enabled():
+        quotes = [ln for ln in builtin.split("\n\n") if ln.startswith(">")]
+        facts = "\n\n".join(ln for ln in builtin.split("\n\n") if not ln.startswith(">"))
+        context = (f"DATA CONTEXT (computed from {len(data)} public investor reviews; question type: {kind}):\n{facts}"
+                   + (f"\n\nWEB CONTEXT (Wikipedia: {web['title']}):\n{web['extract']}" if web else ""))
+        llm = _llm_call(q, context, _secret("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
+        if llm:
+            tail = ""
+            if quotes and kind != "advice":
+                tail = "\n\n**What investors actually said**\n\n" + "\n\n".join(quotes[:3])
+            if web:
+                tail += f"\n\n[Background: {web['title']} on Wikipedia ↗]({web['url']})"
+            return llm + tail, "Claude (Anthropic API) + discovery data" + (" + Wikipedia" if web else "")
+
+    if web:
+        top = data["Problem Theme"].value_counts()
+        summary_line = (f"**Related discovery data:** across {len(data)} records, the leading SIP drop-off driver is "
+                        f"**{top.index[0]}** ({_pct(int(top.iloc[0]), len(data))}). Ask about a driver or behaviour "
+                        "for evidence and quotes.")
+        return web_md + "\n\n" + summary_line, "Wikipedia + discovery data"
+    source = {"data": "Discovery data", "solution": "Discovery data + product playbook",
+              "knowledge": "Built-in SIP knowledge + discovery data", "advice": "Built-in SIP knowledge (neutral)",
+              "nomatch": "Discovery data"}[kind]
+    return builtin, source
 
 
 # ---------------------------------------------------------------------------
@@ -725,56 +921,79 @@ with st.expander("⚙️ Engine methodology", expanded=False):
 # ---------------------------------------------------------------------------
 # Chat card renderer
 # ---------------------------------------------------------------------------
+def _normalize_history(raw) -> list[dict]:
+    """Coerce any chat history shape (current {q,a}, legacy {question/query, answer}, or
+    {role, content} message pairs from older app versions) into [{q, a, src}]."""
+    out, pending = [], None
+    for item in raw if isinstance(raw, list) else []:
+        if not isinstance(item, dict):
+            continue
+        q = item.get("q") or item.get("question") or item.get("query", "")
+        a = item.get("a") or item.get("answer") or item.get("response", "")
+        if q or a:
+            out.append({"q": str(q or ""), "a": str(a or ""), "src": str(item.get("src", ""))})
+            continue
+        role, content = item.get("role"), item.get("content", "")
+        if role == "user":
+            pending = str(content)
+        elif role == "assistant" and pending is not None:
+            out.append({"q": pending, "a": str(content), "src": ""})
+            pending = None
+    return out[-10:]
+
+
+def _rerun() -> None:
+    (getattr(st, "rerun", None) or getattr(st, "experimental_rerun"))()
+
+
 def render_chat(data: pd.DataFrame, source_note: str = "") -> None:
     with chat_slot:
-        st.markdown(
-            '<div class="chat-head"><h3>💬 How can I help you?</h3><span>Ask any question regarding SIP churn, '
-            'investor behavior, drop-off root causes, or product solutions.</span></div>',
-            unsafe_allow_html=True,
-        )
-        if "chat_history" not in st.session_state:
-            st.session_state["chat_history"] = []
+        st.session_state["chat_history"] = _normalize_history(st.session_state.get("chat_history", []))
 
         pill_cols = st.columns(len(SUGGESTED_QUESTIONS))
         for i, sq in enumerate(SUGGESTED_QUESTIONS):
             if pill_cols[i].button(sq, key=f"suggest_{i}", use_container_width=True):
                 st.session_state["pending_question"] = sq
 
-        with st.form("ask_form", clear_on_submit=True, border=False) if _form_supports_border() else                 st.form("ask_form", clear_on_submit=True):
+        with st.form("ask_form", clear_on_submit=True, border=False) if _form_supports_border() else \
+                st.form("ask_form", clear_on_submit=True):
             in_col, btn_col = st.columns([8, 1])
             typed = in_col.text_input(
                 "Your question", label_visibility="collapsed", key="ask_text",
                 placeholder="Ask a question about SIP drop-offs, cancellations, investor friction, or product fixes...")
             asked = btn_col.form_submit_button("Ask", type="primary", use_container_width=True)
 
-        question = (typed.strip() if asked and typed and typed.strip() else None)             or st.session_state.pop("pending_question", None)
+        question = (typed.strip() if asked and typed and typed.strip() else None) \
+            or st.session_state.pop("pending_question", None)
         if question:
-            try:
-                reply = answer_question(question, data)
-            except Exception as exc:  # never surface a stack trace to evaluators
-                reply = (f"I couldn't analyse that question ({type(exc).__name__}). Try rephrasing, "
-                         "e.g. “Why do people pause SIPs?”")
-            st.session_state["chat_history"].append({"q": question, "a": reply})
-            st.session_state["chat_history"] = st.session_state["chat_history"][-10:]
+            with st.spinner("Analysing reviews and SIP knowledge…"):
+                try:
+                    reply, src = respond(question, data)
+                except Exception as exc:  # never surface a stack trace to evaluators
+                    reply, src = (f"I couldn't analyse that question ({type(exc).__name__}). Try rephrasing, "
+                                  "e.g. “Why do people pause SIPs?”"), "Error"
+            st.session_state["chat_history"] = (st.session_state["chat_history"] + [{"q": question, "a": reply, "src": src}])[-10:]
 
         history = st.session_state["chat_history"]
         if history:
             latest = history[-1]
             with st.chat_message("user", avatar="🧑‍💼"):
-                st.markdown(_esc(latest["q"]))
+                st.markdown(_esc(latest.get("q") or latest.get("question") or latest.get("query", "")))
             with st.chat_message("assistant", avatar="📈"):
-                st.markdown(latest["a"])
+                st.markdown(latest.get("a") or latest.get("answer", ""))
             footer_l, footer_r = st.columns([5, 1])
-            footer_l.caption(f"Answers combine the full {len(data):,}-record discovery dataset with built-in SIP domain "
-                             f"knowledge. {source_note}")
+            src = latest.get("src") or "Discovery data"
+            footer_l.caption(f"Source: {src} · {len(data):,} discovery records. {source_note}")
             if footer_r.button("Clear chat", key="clear_chat", use_container_width=True):
                 st.session_state["chat_history"] = []
-                st.rerun()
+                st.session_state.pop("pending_question", None)
+                _rerun()
             if len(history) > 1:
                 with st.expander(f"Earlier questions ({len(history) - 1})"):
                     for item in reversed(history[:-1]):
-                        st.markdown(f"**Q: {_esc(item['q'])}**")
-                        st.markdown(item["a"])
+                        q_text = item.get("q") or item.get("question") or item.get("query", "")
+                        st.markdown(f"**Q: {_esc(q_text)}**")
+                        st.markdown(item.get("a") or item.get("answer", ""))
                         st.divider()
         st.write("")
 
