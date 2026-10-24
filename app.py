@@ -348,7 +348,6 @@ with tab_dash:
             y=themes["Problem Theme"], x=themes["Share"], orientation="h",
             marker_color=[THEME_COLORS.get(t, NAVY) for t in themes["Problem Theme"]],
             text=[f"{s:.0%}" for s in themes["Share"]], textposition="outside",
-            customdata=themes[["Records", "Avg Monthly SIP (INR)", "Dominant Emotion"]].fillna(0).values,
             hovertemplate="<b>%{y}</b><br>Share: %{x:.1%} (%{customdata[0]} records)"
                           "<br>Avg SIP: ₹%{customdata[1]:,.0f}<br>Dominant emotion: %{customdata[2]}<extra></extra>"))
         fig2.update_layout(**PLOT_LAYOUT, height=420,
@@ -359,13 +358,13 @@ with tab_dash:
         stretch(st.plotly_chart, fig2, config={"displayModeBar": False})
     with right:
         st.markdown(f"<div style='height:52px'></div><b style='color:{NAVY}'>Driver scorecard</b>", unsafe_allow_html=True)
-        tbl = summary["themes"][["Problem Theme", "Share", "Avg Monthly SIP (INR)", "Dominant Emotion", "Addressable Share"]].copy()
+        tbl = summary["themes"][["Problem Theme", "Share", "Dominant Emotion", "Addressable Share"]].copy()
         tbl["Share"] = (tbl["Share"] * 100).round(1)
         tbl["Addressable Share"] = (tbl["Addressable Share"] * 100).round(0)
         stretch(st.dataframe, tbl, hide_index=True, height=340, column_config={
             "Share": st.column_config.ProgressColumn("Share", format="%.0f%%", min_value=0,
                                                      max_value=float(max(tbl["Share"].max(), 1))),
-            "Avg Monthly SIP (INR)": st.column_config.NumberColumn("Avg SIP (₹)", format="₹%d"),
+           
             "Addressable Share": st.column_config.NumberColumn("Addressable", format="%.0f%%"),
         })
 
@@ -414,7 +413,7 @@ with tab_table:
             "Source URL": st.column_config.LinkColumn("Source URL", display_text="Open source ↗"),
             "Original Comment": st.column_config.TextColumn("Original Comment", width="large"),
             "SIP Tenure (Months)": st.column_config.NumberColumn("SIP Tenure (Months)", format="%d"),
-            "Monthly SIP Amount (INR)": st.column_config.NumberColumn("Monthly SIP Amount (INR)", format="₹%d"),
+            
             "Recommended Groww Intervention": st.column_config.TextColumn(width="large"),
             "Problem Root Cause": st.column_config.TextColumn(width="large"),
         },
