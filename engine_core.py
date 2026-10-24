@@ -13,7 +13,7 @@ Pipeline
               account-like digit strings. Author names are never collected.
 3. ENRICH     Deterministic, explainable NLP layer: weighted lexicon scoring
               assigns each record to one of the 8 SIP-churn drivers, then
-              extracts tenure, SIP amount, behaviour, emotion and
+              extracts tenure, behaviour, emotion and
               preventability. No external LLM / API key required.
 4. SYNTHESISE Summary metrics + a formatted 3-sheet Excel workbook.
 
@@ -420,28 +420,6 @@ def extract_tenure_months(text: str) -> int | None:
     return None
 
 
-def extract_sip_amount(text: str) -> int | None:
-    t = text.lower().replace("₹", " rs ")
-    patterns = [
-        r"\b(?:rs\.?|inr)\s*([\d,]{3,7})(?:\s*k)?",
-        r"\b([\d,]{3,7})\s*(?:rs|rupees|inr)\b",
-        r"\b([\d,]{3,7})\s*(?:/\s*month|per month|a month|pm|monthly)\b",
-        r"\b(\d{1,2})\s*k\s*(?:sip|per month|/month|monthly|a month)\b",
-    ]
-    for i, p in enumerate(patterns):
-        m = re.search(p, t)
-        if m:
-            try:
-                val = int(m.group(1).replace(",", ""))
-            except ValueError:
-                continue
-            if i == 3:
-                val *= 1000
-            if 100 <= val <= 500_000:
-                return val
-    return None
-
-
 def stage_for_tenure(months: int | None) -> str:
     if months is None or pd.isna(months):
         return "Unknown Stage"
@@ -548,6 +526,12 @@ def enrich_records(raw: Iterable[dict]) -> pd.DataFrame:
         df = df.drop_duplicates(subset=["Original Comment"]).reset_index(drop=True)
     return _coerce_types(df)
 
+
+def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
+    col = "SIP Tenure (Months)"
+    if col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors="coerce").astype("Int64")
+    return df
 
 
 # ---------------------------------------------------------------------------
@@ -1037,7 +1021,6 @@ def build_benchmark_corpus(seed: int = 2026) -> pd.DataFrame:
                     ["First-time MF investor", "First-time MF investor", "Salaried first-jobber (22–27)",
                      "Tier-2/3 first-time investor", "Gig / variable-income earner"]),
                 "SIP Tenure (Months)": tenure,
-             
                 "SIP Stage": stage_for_tenure(tenure),
                 "Problem Theme": theme,
                 "Problem Behaviour": detect_behaviour(text, theme),
@@ -1084,12 +1067,10 @@ def summarize(df: pd.DataFrame) -> dict:
         if sub.empty:
             continue
         emo = Counter(sub["Investor Emotional Trigger"]).most_common(1)[0][0]
-    
         themes.append({
             "Problem Theme": theme,
             "Records": len(sub),
             "Share": len(sub) / n,
-           
             "Median Tenure (Months)": float(sub["SIP Tenure (Months)"].dropna().median()) if sub["SIP Tenure (Months)"].notna().any() else None,
             "Dominant Emotion": emo,
             "Addressable Share": float(sub["Churn Preventability"].isin(ADDRESSABLE_LEVELS).mean()),
@@ -1103,7 +1084,6 @@ def summarize(df: pd.DataFrame) -> dict:
         "known_tenure": known_tenure,
         "addressable": addressable,
         "addressable_share": addressable / n,
-
         "themes": theme_df,
         "top_theme": theme_df.iloc[0]["Problem Theme"] if not theme_df.empty else "—",
     }
@@ -1209,13 +1189,16 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
     # ---------------- Sheet 1: dataset ----------------
     ws = wb.active
     ws.title = ds_name
-    widths = [18, 26, 30, 50, 24, 12, 14, 22, 24, 22, 45, 20, 24, 50, 38]
-    for c, (col, w) in enumerate(zip(COLUMNS, widths), start=1):
+    width_by_col = {"Original Comment": 50, "Problem Root Cause": 45, "Recommended Groww Intervention": 50,
+                    "Target North-Star Metric Impact": 38, "Source URL": 30, "SIP Tenure (Months)": 12}
+    for c, col in enumerate(COLUMNS, start=1):
+        w = width_by_col.get(col, 22)
         cell = ws.cell(row=1, column=c, value=col)
         cell.font, cell.fill, cell.alignment, cell.border = hdr_font, hdr_fill, center, box
         ws.column_dimensions[get_column_letter(c)].width = w
     ws.row_dimensions[1].height = 34
 
+    url_idx = COLUMNS.index("Source URL") + 1
     for r, rec in enumerate(df[COLUMNS].itertuples(index=False), start=2):
         for c, val in enumerate(rec, start=1):
             if val is None or (not isinstance(val, str) and pd.isna(val)):
@@ -1224,30 +1207,31 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
                 val = val.item()
             cell = ws.cell(row=r, column=c, value=val)
             cell.font, cell.alignment, cell.border = body, wrap_top, box
-            if c == 3 and val:
+            if c == url_idx and val:
                 cell.hyperlink = val
                 cell.font = link_font
-            if c == 7 and val is not None:
-                cell.number_format = "₹#,##0"
         if r % 2 == 0:
             for c in range(1, len(COLUMNS) + 1):
                 ws.cell(row=r, column=c).fill = light_fill
     ws.freeze_panes = "E2"
     ws.auto_filter.ref = f"A1:{get_column_letter(len(COLUMNS))}{last}"
 
-    rng = lambda col: f"{ds}!${col}$2:${col}${last}"  # noqa: E731
-    THEME, TEN, AMT, STAGE, PREV, COMMENT = (rng("I"), rng("F"), rng("G"), rng("H"), rng("M"), rng("D"))
+    def rng(name: str) -> str:  # column ranges resolved by header name, not hard-coded letters
+        col = get_column_letter(COLUMNS.index(name) + 1)
+        return f"{ds}!${col}$2:${col}${last}"
+    THEME, TEN, STAGE, PREV, COMMENT = (rng("Problem Theme"), rng("SIP Tenure (Months)"), rng("SIP Stage"),
+                                        rng("Churn Preventability"), rng("Original Comment"))
 
     # ---------------- Sheet 2: summary metrics ----------------
     s2 = wb.create_sheet("Slide Deck Summary Metrics")
     s2.sheet_view.showGridLines = False
-    for col, w in zip("ABCDEFG", [34, 14, 14, 18, 20, 22, 60]):
+    for col, w in zip("ABCDEF", [34, 14, 14, 20, 20, 60]):
         s2.column_dimensions[col].width = w
-    s2["A1"] = "SIP Retention AI Discovery Engine — Executive Summary"
+    s2["A1"] = "Groww SIP Churn Discovery & Investor Friction Engine — Executive Summary"
     s2["A1"].font = title_font
     s2["A2"] = provenance_note or "Source: public web conversations, sanitised (zero PII). All figures below are live formulas over the dataset sheet."
     s2["A2"].font = sub_font
-    s2.merge_cells("A2:G2")
+    s2.merge_cells("A2:F2")
     s2["A2"].alignment = Alignment(wrap_text=True, vertical="top")
     s2.row_dimensions[2].height = 42
 
@@ -1271,7 +1255,6 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
         ("Cliff share of tenure-stated churn", "=IFERROR(B7/B6,0)", "0.0%"),
         ("Addressable by Product/UX & FinTech nudges", f'=COUNTIF({PREV},"High*")', "0"),
         ("Addressable share", "=IFERROR(B9/B5,0)", "0.0%"),
-    
     ]
     for i, (label, formula, fmt) in enumerate(kpis):
         r = 5 + i
@@ -1299,12 +1282,11 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
             theme,
             f'=COUNTIF({THEME},A{r})',
             f"=IFERROR(B{r}/$B$5,0)",
-            f'=IFERROR(AVERAGEIFS({AMT},{THEME},A{r}),0)',
             emo_map.get(theme, "—"),
             f'=COUNTIFS({THEME},A{r},{PREV},"High*")',
             THEME_KB[theme]["intervention"],
         ]
-        fmts = [None, "0", "0.0%", "₹#,##0", None, "0", None]
+        fmts = [None, "0", "0.0%", None, "0", None]
         for c, (v, fmt) in enumerate(zip(vals, fmts), start=1):
             cell = s2.cell(row=r, column=c, value=v)
             cell.font, cell.border, cell.alignment = body, box, wrap_top
@@ -1313,7 +1295,7 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
         s2.row_dimensions[r].height = 42
     tot = first + len(THEMES)
     for c, v in enumerate(["Total", f"=SUM(B{first}:B{tot-1})", f"=SUM(C{first}:C{tot-1})",
-                           None, None, f"=SUM(F{first}:F{tot-1})", None], start=1):
+                           None, f"=SUM(E{first}:E{tot-1})", None], start=1):
         cell = s2.cell(row=tot, column=c, value=v)
         cell.font, cell.border = bold, box
         cell.number_format = "0.0%" if c == 3 else "0"

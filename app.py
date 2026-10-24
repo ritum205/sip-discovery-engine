@@ -152,7 +152,7 @@ with st.expander("⚙️ Engine methodology", expanded=False):
     m1, m2, m3, m4 = st.columns(4)
     m1.markdown('<div class="step"><b>1 · Ingest</b><br><span>Public Play Store reviews (google-play-scraper) and public Reddit JSON search. No logins, tokens or private data.</span></div>', unsafe_allow_html=True)
     m2.markdown('<div class="step"><b>2 · Sanitise</b><br><span>Strip handles, emails, phone, PAN, Aadhaar, UPI IDs and account-like numbers. Author names never collected.</span></div>', unsafe_allow_html=True)
-    m3.markdown('<div class="step"><b>3 · Enrich</b><br><span>Explainable weighted-lexicon NLP assigns 1 of 8 drivers, then extracts tenure, SIP amount, behaviour, emotion and preventability.</span></div>', unsafe_allow_html=True)
+    m3.markdown('<div class="step"><b>3 · Enrich</b><br><span>Explainable weighted-lexicon NLP assigns 1 of 8 drivers, then extracts tenure, behaviour, emotion and preventability.</span></div>', unsafe_allow_html=True)
     m4.markdown('<div class="step"><b>4 · Synthesise</b><br><span>Cliff curve, driver sizing, preventability split, and a 3-sheet PM workbook with live Excel formulas.</span></div>', unsafe_allow_html=True)
     st.caption("Classifier rules live in `engine_core.THEME_KB` — every assignment can be traced to the phrases that triggered it.")
 
@@ -244,13 +244,13 @@ else:
         when = (bench_meta.get("harvested_at") or "")[:10]
         provenance = (f"Real public benchmark: {len(df_all)} verbatim, PII-scrubbed Play Store reviews and Reddit "
                       f"posts/comments harvested {when}. Every Source URL opens the original review or thread. "
-                      "Labels are machine-assigned; tenure and amount appear only where the author stated them.")
+                      "Labels are machine-assigned; tenure appears only where the author stated it.")
         rejected = bench_meta.get("rejected_non_post_urls", 0)
         st.markdown(
             f'<div class="notice" style="background:#E9FBF5;border-color:#9BE6CF;color:#0B5A45">'
             f'<b>Real public benchmark</b> · {len(df_all)} records harvested {when} · '
             f'every “Open source ↗” link goes to the original review or thread. Labels are machine-assigned by the '
-            f'engine; tenure and SIP amount are shown only where the author stated them.'
+            f'engine; tenure is shown only where the author stated it.'
             f'{f" ({rejected} records without a post-level link were excluded.)" if rejected else ""}</div>',
             unsafe_allow_html=True)
     else:
@@ -261,13 +261,11 @@ else:
 # ---------------------------------------------------------------------------
 # Filters
 # ---------------------------------------------------------------------------
-AMOUNT_COL = "Monthly SIP Amount (INR)"
 df_all = df_all.copy()
 # Columns actually present in the dataset drive what the table shows; any schema
 # column that is missing is added as empty so metrics, charts and export never crash.
-has_amount = AMOUNT_COL in df_all.columns and df_all[AMOUNT_COL].notna().any()
-display_cols = [c for c in ec.COLUMNS if c in df_all.columns and (c != AMOUNT_COL or has_amount)]
-for col in list(ec.COLUMNS) + [AMOUNT_COL]:
+display_cols = [c for c in ec.COLUMNS if c in df_all.columns]
+for col in ec.COLUMNS:
     if col not in df_all.columns:
         df_all[col] = pd.NA
 df_all["Tenure Band"] = df_all["SIP Tenure (Months)"].map(ec.tenure_band)
@@ -306,12 +304,8 @@ k3.markdown(card("Addressable by Product & Nudges", f"{summary['addressable_shar
                  "High – Product/UX + High – FinTech Nudge", True), unsafe_allow_html=True)
 k4.markdown(card("Top churn driver", summary["top_theme"],
                  f"{summary['themes'].iloc[0]['Share']:.0%} of records in view"), unsafe_allow_html=True)
-if has_amount:
-    k5.markdown(card("Avg monthly SIP at churn", f"₹{summary['avg_sip']:,.0f}" if summary["avg_sip"] else "—",
-                     "Where amount is stated"), unsafe_allow_html=True)
-else:
-    k5.markdown(card("Records with stated tenure", f"{summary['known_tenure']:,}",
-                     "Used for the drop-off cliff chart"), unsafe_allow_html=True)
+k5.markdown(card("Records with stated tenure", f"{summary['known_tenure']:,}",
+                 "Used for the drop-off cliff chart"), unsafe_allow_html=True)
 st.write("")
 
 # ---------------------------------------------------------------------------
@@ -357,10 +351,9 @@ with tab_dash:
             y=themes["Problem Theme"], x=themes["Share"], orientation="h",
             marker_color=[THEME_COLORS.get(t, NAVY) for t in themes["Problem Theme"]],
             text=[f"{s:.0%}" for s in themes["Share"]], textposition="outside",
-            customdata=themes[["Records", "Avg Monthly SIP (INR)", "Dominant Emotion"]].fillna(0).values,
+            customdata=themes[["Records", "Dominant Emotion"]].values,
             hovertemplate="<b>%{y}</b><br>Share: %{x:.1%} (%{customdata[0]} records)"
-                          + ("<br>Avg SIP: ₹%{customdata[1]:,.0f}" if has_amount else "")
-                          + "<br>Dominant emotion: %{customdata[2]}<extra></extra>"))
+                          "<br>Dominant emotion: %{customdata[1]}<extra></extra>"))
         fig2.update_layout(**PLOT_LAYOUT, height=420,
                            title=dict(text="<b>Chart 2 · Root-Cause Driver Breakdown</b><br>"
                                            "<span style='font-size:12px;color:#5A6B82'>% share of churn records · hover for details</span>"),
@@ -369,15 +362,12 @@ with tab_dash:
         stretch(st.plotly_chart, fig2, config={"displayModeBar": False})
     with right:
         st.markdown(f"<div style='height:52px'></div><b style='color:{NAVY}'>Driver scorecard</b>", unsafe_allow_html=True)
-        score_cols = ["Problem Theme", "Share"] + (["Avg Monthly SIP (INR)"] if has_amount else []) \
-            + ["Dominant Emotion", "Addressable Share"]
-        tbl = summary["themes"][score_cols].copy()
+        tbl = summary["themes"][["Problem Theme", "Records", "Share", "Dominant Emotion", "Addressable Share"]].copy()
         tbl["Share"] = (tbl["Share"] * 100).round(1)
         tbl["Addressable Share"] = (tbl["Addressable Share"] * 100).round(0)
         stretch(st.dataframe, tbl, hide_index=True, height=340, column_config={
             "Share": st.column_config.ProgressColumn("Share", format="%.0f%%", min_value=0,
                                                      max_value=float(max(tbl["Share"].max(), 1))),
-            "Avg Monthly SIP (INR)": st.column_config.NumberColumn("Avg SIP (₹)", format="₹%d"),
             "Addressable Share": st.column_config.NumberColumn("Addressable", format="%.0f%%"),
         })
 
@@ -433,7 +423,6 @@ with tab_table:
         "Source URL": st.column_config.LinkColumn("Source URL", display_text="Open source ↗"),
         "Original Comment": st.column_config.TextColumn("Original Comment", width="large"),
         "SIP Tenure (Months)": st.column_config.NumberColumn("SIP Tenure (Months)", format="%d"),
-        AMOUNT_COL: st.column_config.NumberColumn(AMOUNT_COL, format="₹%d"),
         "Recommended Groww Intervention": st.column_config.TextColumn(width="large"),
         "Problem Root Cause": st.column_config.TextColumn(width="large"),
     }
