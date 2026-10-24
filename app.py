@@ -410,7 +410,7 @@ Run locally:   streamlit run app.py
 Deploy:        Streamlit Community Cloud → New app → this repo → app.py
 """
 
-from __future__ import annotations
+
 
 from datetime import datetime
 
