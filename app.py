@@ -1305,7 +1305,8 @@ with st.sidebar:
     bench_df, bench_meta, bench_is_real = get_benchmark()
     bench_label = (f"Benchmark Corpus ({len(bench_df)} Real Public Records)" if bench_is_real
                    else "Demo Corpus (synthetic — real benchmark file missing)")
-    live_mode = mode.startswith("Live")
+    mode = "Benchmark Corpus"
+    live_mode = False
 
     if live_mode:
         st.markdown("**Google Play Store**")
