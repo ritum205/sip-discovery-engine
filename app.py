@@ -1303,6 +1303,8 @@ with st.sidebar:
     st.markdown(f"<h3 style='color:{NAVY};margin-bottom:0'>Control Panel</h3>", unsafe_allow_html=True)
     st.caption("Choose the data source for the discovery run.")
     bench_df, bench_meta, bench_is_real = get_benchmark()
+    if "Recommended Groww Intervention" not in bench_df.columns:
+        bench_df["Recommended Groww Intervention"] = "Proactive communication and guidance"
     bench_label = (f"Benchmark Corpus ({len(bench_df)} Real Public Records)" if bench_is_real
                    else "Demo Corpus (synthetic — real benchmark file missing)")
     mode = "Benchmark Corpus"
