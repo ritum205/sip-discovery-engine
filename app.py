@@ -1305,7 +1305,6 @@ with st.sidebar:
     bench_df, bench_meta, bench_is_real = get_benchmark()
     bench_label = (f"Benchmark Corpus ({len(bench_df)} Real Public Records)" if bench_is_real
                    else "Demo Corpus (synthetic — real benchmark file missing)")
-    mode = st.radio("Ingestion mode", [bench_label, "Live Public Web Ingestion"], index=0, key="ingestion_mode")
     live_mode = mode.startswith("Live")
 
     if live_mode:
@@ -1313,7 +1312,6 @@ with st.sidebar:
         include_play = st.checkbox("Include Play Store reviews", value=True, key="inc_play")
         apps_text = st.text_area(
             "Apps (Name = package id, one per line)",
-            value="\n".join(f"{k} = {v}" for k, v in getattr(ec, "DEFAULT_PLAY_APPS", {"Groww": "com.nextbillion.groww", "Coin by Zerodha": "com.zerodha.coin", "Kuvera": "com.kuvera.app", "Paytm Money": "com.paytmmoney", "ET Money": "com.timesinternet.etmoney"}).items()),
             height=110, disabled=not include_play, key="apps_text",
         )
         reviews_per_app = st.slider("Newest reviews per app", 50, 1000, 300, 50, disabled=not include_play,
