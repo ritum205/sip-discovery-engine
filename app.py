@@ -1166,14 +1166,16 @@ def respond(question: str, data: pd.DataFrame) -> tuple[str, str]:
         facts = "\n\n".join(ln for ln in builtin.split("\n\n") if not ln.startswith(">"))
         context = (f"DATA CONTEXT (computed from {len(data)} public investor reviews; question type: {kind}):\n{facts}"
                    + (f"\n\nWEB CONTEXT (Wikipedia: {web['title']}):\n{web['extract']}" if web else ""))
-        llm = _llm_call(q, context, _secret("ANTHROPIC_MODEL", "claude-sonnet-5-5"))
+        model_name = "gemini-1.5-flash" if _secret('GEMINI_API_KEY') else _secret("ANTHROPIC_MODEL", "claude-sonnet-5-5")
+        llm = _llm_call(q, context, model_name)
         if llm:
             tail = ""
             if quotes and kind != "advice":
                 tail = "\n\n**What investors actually said**\n\n" + "\n\n".join(quotes[:3])
             if web:
                 tail += f"\n\n[Background: {web['title']} on Wikipedia ↗]({web['url']})"
-            return llm + tail, "Claude (Anthropic API) + discovery data" + (" + Wikipedia" if web else "")
+            provider_label = "Google Gemini 1.5 Flash" if _secret('GEMINI_API_KEY') else "Claude"
+            return llm + tail, f"{provider_label} + discovery data" + (" + Wikipedia" if web else "")
 
     source = {"data": "Review data synthesis", "solution": "Review data + product playbook",
               "knowledge": "SIP domain engine + review data", "advice": "SIP domain engine (neutral)",
