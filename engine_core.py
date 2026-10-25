@@ -1,232 +1,152 @@
 """
 engine_core.py — SIP Retention AI Discovery Engine
-====================================================
-Ingestion, sanitisation, enrichment, multi-platform loading, and export module.
-Supports Groww feedback across Google Play Store, Apple App Store, Reddit, and YouTube.
 """
-
 from __future__ import annotations
-
-import io
-import json
-import os
-import random
-import re
-import time
+import io, json, os, random, re
 from collections import Counter
-from typing import Iterable
-
 import pandas as pd
 
-# ---------------------------------------------------------------------------
-# 0. CONSTANTS & SCHEMA
-# ---------------------------------------------------------------------------
-
-COLUMNS = [
-    "Product",
-    "Source Platform",
-    "Source URL",
-    "Original Comment",
-    "User Type",
-    "SIP Tenure (Months)",
-    "SIP Stage",
-    "Problem Theme",
-    "Problem Behaviour",
-    "Problem Root Cause",
-    "Investor Emotional Trigger",
-    "Churn Preventability",
-    "Recommended Groww Intervention",
-    "Target North-Star Metric Impact",
-]
-
-THEMES = [
-    "Disappointment Valley",
-    "Bank & Auto-Debit Friction",
-    "Same-Category Overlap",
-    "Directionless Onboarding",
-    "Liquidity Shortage",
-    "Market Correction Panic",
-    "Social Influence",
-    "Platform Bugs",
-]
-
-PREVENT_UX = "High – Product/UX Fix"
-PREVENT_NUDGE = "High – FinTech Nudge"
-PREVENT_EDU = "Medium – Investor Education"
-PREVENT_LOW = "Low – External / Life Event"
+COLUMNS = ['Product', 'Source Platform', 'Source URL', 'Original Comment', 'User Type', 'SIP Tenure (Months)', 'SIP Stage', 'Problem Theme', 'Problem Behaviour', 'Problem Root Cause', 'Investor Emotional Trigger', 'Churn Preventability', 'Recommended Groww Intervention', 'Target North-Star Metric Impact']
+THEMES = ['Disappointment Valley', 'Bank & Auto-Debit Friction', 'Same-Category Overlap', 'Directionless Onboarding', 'Liquidity Shortage', 'Market Correction Panic', 'Social Influence', 'Platform Bugs']
+PREVENT_UX = 'High – Product/UX Fix'
+PREVENT_NUDGE = 'High – FinTech Nudge'
+PREVENT_EDU = 'Medium – Investor Education'
+PREVENT_LOW = 'Low – External / Life Event'
 PREVENTABILITY_LEVELS = [PREVENT_UX, PREVENT_NUDGE, PREVENT_EDU, PREVENT_LOW]
 ADDRESSABLE_LEVELS = {PREVENT_UX, PREVENT_NUDGE}
+STAGES = ['Activation (M0–3)', 'Habit Formation (M4–9)', 'Retention Cliff (M10–14)', 'Post-Cliff Maturity (M15+)']
+TENURE_BANDS = [('0–3 months', 0, 3), ('4–6 months', 4, 6), ('7–9 months', 7, 9), ('10–14 months (Cliff)', 10, 14), ('15–24 months', 15, 24), ('25–36 months', 25, 36), ('37+ months', 37, 600)]
+GROWW_APP_ID = 'com.nextbillion.groww'
+GROWW_PLAY_URL = f'https://play.google.com/store/apps/details?id={GROWW_APP_ID}'
+REAL_BENCHMARK_FILE = 'real_benchmark_220.json'
+REAL_EXCEL_FILE = 'wb.xlsx'
 
-STAGES = [
-    "Activation (M0–3)",
-    "Habit Formation (M4–9)",
-    "Retention Cliff (M10–14)",
-    "Post-Cliff Maturity (M15+)",
-]
+THEME_KB = {
+    'Disappointment Valley': {'intervention': 'Your SIP in Context card: historical rolling-return ranges + units accumulated', 'nsm': 'Month-12 SIP retention'},
+    'Bank & Auto-Debit Friction': {'intervention': 'Pre-Debit Balance Predictor and Mandate Health Check', 'nsm': 'SIP instalment success rate'},
+    'Same-Category Overlap': {'intervention': 'Same-Category Overlap Consolidator', 'nsm': 'Consolidated SIP amount'},
+    'Directionless Onboarding': {'intervention': 'Goal-anchored SIP setup', 'nsm': '% of SIPs linked to a goal'},
+    'Liquidity Shortage': {'intervention': 'SIP Sabbatical: pause 1-3 instalments', 'nsm': 'Pause-instead-of-cancel ratio'},
+    'Market Correction Panic': {'intervention': 'Calm-Market Context: drawdown ranges', 'nsm': 'Down-market retention'},
+    'Social Influence': {'intervention': 'Education module on holding periods', 'nsm': 'Discipline retention'},
+    'Platform Bugs': {'intervention': 'SIP status reliability fixes', 'nsm': 'Support tickets reduced'}
+}
 
-TENURE_BANDS = [
-    ("0–3 months", 0, 3),
-    ("4–6 months", 4, 6),
-    ("7–9 months", 7, 9),
-    ("10–14 months (Cliff)", 10, 14),
-    ("15–24 months", 15, 24),
-    ("25–36 months", 25, 36),
-    ("37+ months", 37, 600),
-]
+def tenure_band(months):
+    if months is None or pd.isna(months):
+        return 'Not stated'
+    try:
+        m = int(months)
+        for label, lo, hi in TENURE_BANDS:
+            if lo <= m <= hi:
+                return label
+    except Exception:
+        pass
+    return 'Not stated'
 
-GROWW_APP_ID = "com.nextbillion.groww"
-GROWW_PLAY_URL = f"https://play.google.com/store/apps/details?id={GROWW_APP_ID}"
-REAL_BENCHMARK_FILE = "real_benchmark_220.json"
-REAL_EXCEL_FILE = "wb.xlsx"
+def stage_for_tenure(months):
+    if months is None or pd.isna(months):
+        return 'Unknown Stage'
+    try:
+        m = int(months)
+        if m <= 3:
+            return STAGES[0]
+        if m <= 9:
+            return STAGES[1]
+        if m <= 14:
+            return STAGES[2]
+        return STAGES[3]
+    except Exception:
+        return 'Unknown Stage'
 
-USER_AGENT = "SIPRetentionDiscoveryEngine/1.0 (public research; zero PII)"
+def _coerce_types(df):
+    if 'SIP Tenure (Months)' in df.columns:
+        df['SIP Tenure (Months)'] = pd.to_numeric(df['SIP Tenure (Months)'], errors='coerce')
+    for col in ['Product', 'Source Platform', 'Problem Theme', 'SIP Stage', 'Churn Preventability']:
+        if col in df.columns:
+            df[col] = df[col].fillna('Unknown').astype(str).str.strip()
+    return df
 
-# ---------------------------------------------------------------------------
-# 1. THEME KNOWLEDGE BASE
-# ---------------------------------------------------------------------------
+def is_post_level_url(url):
+    if not url or not isinstance(url, str):
+        return False
+    u = url.strip().lower()
+    return any(p in u for p in ['play.google.com', 'apps.apple.com', 'reddit.com', 'youtube.com', 'youtu.be', 'tradingqna.com'])
 
-THEME_KB: dict[str, dict] = {
-    "Disappointment Valley": {
-        "lexicon": [
-            (r"\b(no|zero|negative|flat|poor|low|bad)\s+returns?\b", 3),
-            (r"\breturns?\b.{0,30}\b(fd|fixed deposit|savings account|rd)\b", 3),
-            (r"\b(fd|fixed deposit)\b.{0,40}\bbetter\b", 3),
-            (r"\b(red|in loss|losing money|lost money|xirr)\b", 2),
-            (r"\bnot worth\b|\bwaste of (time|money)\b|\bwhat'?s the point\b", 2),
-            (r"\b(a|one|1)\s*(year|yr)\b.{0,40}\b(nothing|same|flat|loss)\b", 3),
-            (r"\bdisappoint", 2),
-        ],
-        "behaviours": ["Cancelled SIP", "Redeemed full corpus", "Paused SIP"],
-        "root_causes": [
-            "Return expectations anchored to FD/RD; no context on how equity returns vary over short holding periods",
-            "First 9–12 months of a SIP show near-flat XIRR, read as 'the product does not work'",
-            "Portfolio screen headlines absolute P&L, making a small drawdown feel like failure",
-        ],
-        "emotions": ["Disappointment", "Regret", "Impatience"],
-        "prevent_mix": {PREVENT_NUDGE: 0.60, PREVENT_UX: 0.20, PREVENT_EDU: 0.20},
-        "intervention": "‘Your SIP in Context’ card: historical rolling-return ranges by holding period + units accumulated",
-        "nsm": "↑ Month-12 SIP retention; ↓ cancellations in M10–14",
-        "tenure_center": 12,
-    },
-    "Bank & Auto-Debit Friction": {
-        "lexicon": [
-            (r"\bmandate\b", 3),
-            (r"\b(auto[\s-]?pay|auto[\s-]?debit|e-?nach|nach)\b", 3),
-            (r"\bbounce(d)?\b|\bdebit failed\b|\bpayment failed\b|\binsufficient (funds|balance)\b", 3),
-            (r"\b(penalty|bounce charge|charges? by (my )?bank)\b", 2),
-            (r"\bchang(e|ed|ing) (my )?bank\b|\bnew bank account\b", 2),
-            (r"\bupi\b.{0,20}\b(fail|limit|expired?)\b", 2),
-        ],
-        "behaviours": ["Let mandate lapse", "Cancelled SIP", "Switched platform"],
-        "root_causes": [
-            "Debit date collides with salary credit timing; bounce fee creates negative association with SIP",
-            "Mandate expired or broke after a bank-account change with no proactive repair flow",
-            "Repeated silent instalment failures — investor discovers gap months later",
-        ],
-        "emotions": ["Frustration", "Embarrassment", "Distrust"],
-        "prevent_mix": {PREVENT_UX: 0.70, PREVENT_NUDGE: 0.20, PREVENT_EDU: 0.05, PREVENT_LOW: 0.05},
-        "intervention": "Pre-Debit Balance Predictor (T-3 day alert + 1-tap date shift) and Mandate Health Check",
-        "nsm": "↑ SIP instalment success rate; ↓ involuntary SIP failures",
-        "tenure_center": 7,
-    },
-    "Same-Category Overlap": {
-        "lexicon": [
-            (r"\boverlap(ping)?\b", 4),
-            (r"\b(too many|multiple|\d+|five|four|six|seven) (mutual )?funds\b", 2),
-            (r"\b(same|similar) (stocks?|holdings?|portfolio)\b", 3),
-            (r"\b(flexi ?cap|large ?cap|mid ?cap|small ?cap|index fund).{0,40}\b(another|also|again)\b", 2),
-            (r"\bconsolidat", 3),
-            (r"\b(confus|clutter|messy portfolio)", 2),
-        ],
-        "behaviours": ["Cancelled SIP", "Reduced number of SIPs", "Paused SIP"],
-        "root_causes": [
-            "Multiple SIPs started in same category at different times; investor discovers duplicates and cancels",
-            "No portfolio view of category overlap, so cleanup defaults to cancelling rather than consolidating",
-        ],
-        "emotions": ["Confusion", "Overwhelm", "Self-doubt"],
-        "prevent_mix": {PREVENT_UX: 0.70, PREVENT_EDU: 0.25, PREVENT_NUDGE: 0.05},
-        "intervention": "Same-Category Overlap Consolidator: category-level overlap insight + guided merge flow",
-        "nsm": "↑ Consolidated (not cancelled) SIP amount; ↑ M12 SIP retention",
-        "tenure_center": 13,
-    },
-    "Directionless Onboarding": {
-        "lexicon": [
-            (r"\b(no|without a|didn'?t have a|never had a) (goal|plan|reason)\b", 4),
-            (r"\bjust started\b|\bstarted because\b|\bsaw (a|on) (youtube|instagram|reel)\b", 2),
-            (r"\bdon'?t (know|understand) (why|what)\b", 2),
-            (r"\bwhat (am i|was i) (investing|saving) for\b", 4),
-            (r"\bgoal\b", 1),
-        ],
-        "behaviours": ["Cancelled SIP", "Let mandate lapse", "Paused SIP"],
-        "root_causes": [
-            "SIP started without a goal or horizon; motivation fades during initial months",
-            "Onboarding optimised for 2-minute conversion without connecting SIP to life goals",
-        ],
-        "emotions": ["Aimlessness", "Indifference", "Self-doubt"],
-        "prevent_mix": {PREVENT_UX: 0.60, PREVENT_NUDGE: 0.20, PREVENT_EDU: 0.20},
-        "intervention": "Goal-anchored SIP setup with neutral milestone progress check-ins at M3, M6, M9, M12",
-        "nsm": "↑ % of SIPs linked to a goal; ↑ M12 SIP retention",
-        "tenure_center": 11,
-    },
-    "Liquidity Shortage": {
-        "lexicon": [
-            (r"\b(lost|losing) (my )?job\b|\blaid off\b|\blayoff\b|\bjob change\b|\bnotice period\b", 4),
-            (r"\b(rent|emi|loan|wedding|medical|hospital|emergency|fees)\b", 2),
-            (r"\b(tight|short|no) (on )?(money|cash|funds)\b|\bcan'?t afford\b|\bcash ?crunch\b", 4),
-            (r"\bneeded (the )?money\b|\bneed(ed)? cash\b", 3),
-            (r"\bsalary (delayed|cut|late)\b", 3),
-        ],
-        "behaviours": ["Cancelled SIP", "Redeemed full corpus", "Paused SIP"],
-        "root_causes": [
-            "Temporary cash-flow shock; the only visible options are continue or cancel",
-            "SIP amount sized on peak income without emergency liquidity buffer",
-        ],
-        "emotions": ["Anxiety", "Stress", "Guilt"],
-        "prevent_mix": {PREVENT_UX: 0.50, PREVENT_NUDGE: 0.25, PREVENT_LOW: 0.25},
-        "intervention": "SIP Sabbatical: pause 1–3 instalments or step down amount instead of cancelling; auto-resume reminder",
-        "nsm": "↑ Pause-instead-of-cancel ratio; ↑ SIP reactivation rate",
-        "tenure_center": 10,
-    },
-    "Market Correction Panic": {
-        "lexicon": [
-            (r"\b(crash(ed|ing)?|correction|fall(ing)?|bloodbath|dip|down \d+%|sensex|nifty)\b", 3),
-            (r"\b(scared|panic(ked)?|fear|afraid|worried)\b", 3),
-            (r"\b(war|election|recession|tariff|fii selling)\b", 2),
-        ],
-        "behaviours": ["Paused SIP", "Cancelled SIP", "Redeemed full corpus"],
-        "root_causes": [
-            "First market drawdown experienced as a new investor; paper loss feels permanent",
-            "Market volatility amplification without historical context in the app",
-        ],
-        "emotions": ["Fear", "Loss aversion", "Anxiety"],
-        "prevent_mix": {PREVENT_NUDGE: 0.55, PREVENT_EDU: 0.25, PREVENT_UX: 0.15, PREVENT_LOW: 0.05},
-        "intervention": "Calm-Market Context: historical drawdown-and-recovery ranges and unit accumulation context",
-        "nsm": "↓ SIP stops during >5% drawdown weeks; ↑ M12 retention",
-        "tenure_center": 11,
-    },
-    "Social Influence": {
-        "lexicon": [
-            (r"\b(friend|friends|colleague|cousin|brother|uncle|everyone)\b.{0,40}\b(said|told|making|earning|switched|moved)\b", 3),
-            (r"\b(f&o|futures|options trading|crypto|intraday|direct stocks?)\b", 3),
-            (r"\b(finfluencer|youtuber|telegram|tip)\b", 2),
-        ],
-        "behaviours": ["Cancelled SIP", "Redeemed full corpus", "Switched to direct stocks / F&O"],
-        "root_causes": [
-            "Peer narratives of fast trading returns make steady SIP feel too slow",
-            "Unverified social media tips override the investor's original discipline",
-        ],
-        "emotions": ["Peer comparison", "Impatience", "Self-doubt"],
-        "prevent_mix": {PREVENT_EDU: 0.50, PREVENT_NUDGE: 0.30, PREVENT_UX: 0.10, PREVENT_LOW: 0.10},
-        "intervention": "Education module on holding period outcomes and the hidden cost of frequent strategy switching",
-        "nsm": "↓ SIP-to-trading cannibalisation; ↑ M12 retention",
-        "tenure_center": 12,
-    },
-    "Platform Bugs": {
-        "lexicon": [
-            (r"\b(bug|glitch|crash(es|ed)? (the )?app|app (is )?(not working|crashing|hangs))\b", 4),
-            (r"\b(wrong|incorrect|not updated|mismatch)\b.{0,30}\b(nav|units|amount|value|statement|status)\b", 3),
-            (r"\b(showing|shows|showed) (cancelled|failed|pending)\b", 3),
-            (r"\b(support|customer care|ticket)\b.{0,30}\b(no response|useless|not respond)\b", 2),
-        ],
-        "behaviours": ["Switched platform", "Cancelled SIP", "Let mandate lapse"],
-        "
+def load_real_benchmark(path=None):
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    cwd = os.getcwd()
+    xlsx_candidates = [os.path.join(base_dir, REAL_EXCEL_FILE), os.path.join(cwd, REAL_EXCEL_FILE), 'wb.xlsx', 'wb_2.xlsx']
+    json_candidates = [path or os.path.join(base_dir, REAL_BENCHMARK_FILE), os.path.join(cwd, REAL_BENCHMARK_FILE), REAL_BENCHMARK_FILE]
+    for xp in xlsx_candidates:
+        if os.path.exists(xp):
+            try:
+                df = pd.read_excel(xp)
+                if len(df) > 0:
+                    for col in COLUMNS:
+                        if col not in df.columns:
+                            df[col] = None
+                    return _coerce_types(df[COLUMNS].reset_index(drop=True)), {'source': f'Excel: {os.path.basename(xp)}', 'total': len(df), 'rejected_non_post_urls': 0}
+            except Exception:
+                pass
+    for jp in json_candidates:
+        if jp and os.path.exists(jp):
+            try:
+                with open(jp, 'r', encoding='utf-8') as fh:
+                    payload = json.load(fh)
+                records = payload.get('records', payload if isinstance(payload, list) else [])
+                valid = [r for r in records if is_post_level_url(r.get('Source URL', ''))] or records
+                df = pd.DataFrame(valid)
+                for col in COLUMNS:
+                    if col not in df.columns:
+                        df[col] = None
+                return _coerce_types(df[COLUMNS].reset_index(drop=True)), {'source': f'JSON: {os.path.basename(jp)}', 'total': len(df), 'rejected_non_post_urls': len(records) - len(valid)}
+            except Exception:
+                pass
+    return None, {'error': 'Could not locate wb.xlsx or real_benchmark_220.json'}
+
+def load_benchmark_data():
+    df, _ = load_real_benchmark()
+    if df is not None:
+        return df
+    raise FileNotFoundError('Could not load benchmark data.')
+
+def summarize(df):
+    n = len(df)
+    if n == 0:
+        return {'n': 0}
+    ten = df['SIP Tenure (Months)']
+    cliff = int(((ten >= 10) & (ten <= 14)).fillna(False).sum())
+    addressable = int(df['Churn Preventability'].isin(ADDRESSABLE_LEVELS).sum())
+    themes = []
+    for theme in THEMES:
+        sub = df[df['Problem Theme'] == theme]
+        if sub.empty:
+            continue
+        emo_counts = Counter(sub['Investor Emotional Trigger'])
+        emo = emo_counts.most_common(1)[0][0] if emo_counts else 'Frustration'
+        themes.append({
+            'Problem Theme': theme,
+            'Records': len(sub),
+            'Share': len(sub) / n,
+            'Median Tenure (Months)': float(sub['SIP Tenure (Months)'].dropna().median()) if sub['SIP Tenure (Months)'].notna().any() else 10.0,
+            'Dominant Emotion': emo,
+            'Addressable Share': float(sub['Churn Preventability'].isin(ADDRESSABLE_LEVELS).mean())
+        })
+    theme_df = pd.DataFrame(themes).sort_values('Records', ascending=False)
+    known_tenure = int(ten.notna().sum())
+    return {'n': n, 'cliff': cliff, 'cliff_share': cliff / known_tenure if known_tenure else 0.0, 'known_tenure': known_tenure, 'addressable': addressable, 'addressable_share': addressable / n, 'themes': theme_df, 'top_theme': theme_df.iloc[0]['Problem Theme'] if not theme_df.empty else 'Bank & Auto-Debit Friction'}
+
+def build_discovery_workbook(df, provenance_note=None):
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f'Discovery Dataset ({len(df)} Rows)'
+    for c, col in enumerate(COLUMNS, start=1):
+        ws.cell(row=1, column=c, value=col)
+    for r, rec in enumerate(df[COLUMNS].itertuples(index=False), start=2):
+        for c, val in enumerate(rec, start=1):
+            ws.cell(row=r, column=c, value=val)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
