@@ -25,8 +25,6 @@ COLUMNS = [
     "Problem Root Cause",
     "Investor Emotional Trigger",
     "Churn Preventability",
-    "Recommended Groww Intervention",
-    "Target North-Star Metric Impact",
 ]
 
 THEMES = [
