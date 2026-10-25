@@ -1236,8 +1236,8 @@ def _rerun() -> None:
 
 def render_chat(data: pd.DataFrame, source_note: str = "") -> None:
     with chat_slot:
-                if llm_enabled():
-            st.caption("🟢 **AI Enabled:** Google Gemini 1.5 Flash configured (Live synthesis)")
+        if llm_enabled():
+            st.caption("🟢 **AI Enabled:** Google Gemini 1.5 Flash (Live Synthesis)")
         st.session_state["chat_history"] = _normalize_history(st.session_state.get("chat_history", []))
 
         pill_cols = st.columns(len(SUGGESTED_QUESTIONS))
