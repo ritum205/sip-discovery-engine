@@ -179,13 +179,11 @@ friction explain work works between difference better best good bad worse worst 
 compare comparison really actually way ways thing things know need want like""".split())
 
 SUGGESTED_QUESTIONS = [
-    "Why do people start a SIP, and what do they expect to happen?",
-    "What changes in their behaviour in the months after starting?",
-    "What leads investors to pause, reduce or stop a SIP?",
-    "What do investors check, and how often, once they have started?",
-    "What confuses or worries them inside the app?",
-    "What do they do outside the app when they feel unsure?",
-    "What separates investors who continue from those who quietly drop off?"
+    "Why do people cancel their SIP?",
+    "What are the top bank auto-debit failure reasons?",
+    "SIP vs lumpsum?",
+    "Should I pause or cancel my SIP?",
+    "How can Groww reduce SIP churn?"
 ]
 
 # ---------------------------------------------------------------------------
