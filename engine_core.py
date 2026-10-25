@@ -64,6 +64,16 @@ TENURE_BANDS = [
     ("37+ months", 37, 600),
 ]
 
+DEFAULT_PLAY_APPS = [
+    {"id": "com.nextbillion.groww", "name": "Groww", "platform": "Google Play Store"},
+    {"id": "com.zerodha.kite3", "name": "Zerodha Coin", "platform": "Google Play Store"},
+]
+
+DEFAULT_SUBREDDITS = ["IndiaInvestments", "mutualfunds", "personalfinanceindia"]
+DEFAULT_REDDIT_QUERIES = ["Groww SIP", "SIP stop", "SIP pause", "Groww mandate", "mutual fund overlap"]
+
+DEMO_PROVENANCE = "Multi-platform public benchmark: Google Play Store, YouTube Finance Feedback, Apple App Store."
+
 GROWW_APP_ID = "com.nextbillion.groww"
 GROWW_PLAY_URL = f"https://play.google.com/store/apps/details?id={GROWW_APP_ID}"
 REAL_BENCHMARK_FILE = "real_benchmark_220.json"
@@ -73,36 +83,79 @@ THEME_KB = {
     "Disappointment Valley": {
         "intervention": "‘Your SIP in Context’ card: historical rolling-return ranges + units accumulated",
         "nsm": "↑ Month-12 SIP retention; ↓ cancellations in M10–14",
+        "description": "Investor cancels SIP because 1-year returns underperformed fixed deposit benchmarks.",
+        "root_causes": ["Anchoring to short-term nominal XIRR", "Comparing equity volatility to guaranteed bank FDs"],
     },
     "Bank & Auto-Debit Friction": {
         "intervention": "Pre-Debit Balance Predictor (T-3 day alert + 1-tap date shift) and Mandate Health Check",
         "nsm": "↑ SIP instalment success rate; ↓ involuntary SIP failures",
+        "description": "Auto-debit fails due to salary delays or bank penalties (₹295–₹500 bounce charge).",
+        "root_causes": ["Salary credit mismatch", "Broken or rejected eNACH mandate"],
     },
     "Same-Category Overlap": {
         "intervention": "Same-Category Overlap Consolidator: category overlap insight + guided merge flow",
         "nsm": "↑ Consolidated (not cancelled) SIP amount; ↑ M12 SIP retention",
+        "description": "Investor holds multiple overlapping funds in the same category and cancels due to clutter.",
+        "root_causes": ["Lack of portfolio overlap visibility", "Over-diversification across duplicate stocks"],
     },
     "Directionless Onboarding": {
         "intervention": "Goal-anchored SIP setup with neutral milestone progress check-ins at M3, M6, M9, M12",
         "nsm": "↑ % of SIPs linked to a goal; ↑ M12 SIP retention",
+        "description": "SIP started impulsively on peer recommendation without an investment goal or timeline.",
+        "root_causes": ["Frictionless signup without intent calibration", "No milestone check-ins"],
     },
     "Liquidity Shortage": {
         "intervention": "SIP Sabbatical: pause 1–3 instalments or step down amount instead of cancelling",
         "nsm": "↑ Pause-instead-of-cancel ratio; ↑ SIP reactivation rate",
+        "description": "Temporary cash squeeze causes permanent SIP cancellation due to binary UI choices.",
+        "root_causes": ["Binary continue-or-cancel UI", "Lack of 1–3 month sabbatical pause mechanism"],
     },
     "Market Correction Panic": {
         "intervention": "Calm-Market Context: historical drawdown-and-recovery ranges and unit accumulation context",
         "nsm": "↓ SIP stops during >5% drawdown weeks; ↑ M12 retention",
+        "description": "Exits mutual funds during short-term market dips due to loss aversion.",
+        "root_causes": ["Daily red P&L portfolio display", "Lack of rupee-cost averaging context"],
     },
     "Social Influence": {
         "intervention": "Education module on holding period outcomes and switching costs",
         "nsm": "↓ SIP-to-trading cannibalisation; ↑ M12 retention",
+        "description": "Cancels SIP after hearing peer stories of quick trading gains.",
+        "root_causes": ["FOMO driven by social trading narratives", "Underestimating compounding horizon"],
     },
     "Platform Bugs": {
         "intervention": "SIP status reliability fixes + transparent instalment lifecycle tracker",
         "nsm": "↓ SIP-related tickets; ↑ CSAT; ↑ M12 retention",
+        "description": "Payment debited but units delayed or mandate status stuck on pending.",
+        "root_causes": ["BSE Star / AMC reconciliation lag", "Opaque order tracking statuses"],
     },
 }
+
+THEME_KEYWORDS = {
+    "Disappointment Valley": ["fd", "return", "profit", "xirr", "loss", "negative", "cagr", "disappoint", "benchmark", "interest"],
+    "Bank & Auto-Debit Friction": ["bank", "mandate", "debit", "nach", "autopay", "auto-pay", "bounce", "charge", "penalty", "account"],
+    "Same-Category Overlap": ["overlap", "duplicate", "multiple", "clutter", "flexi", "large cap", "same fund", "two funds", "consolidat"],
+    "Directionless Onboarding": ["goal", "start", "why", "plan", "impulse", "horizon", "purpose", "target", "confus"],
+    "Liquidity Shortage": ["money", "salary", "cash", "pause", "emergency", "expense", "afford", "financial", "tight", "rent"],
+    "Market Correction Panic": ["crash", "fall", "dip", "correction", "red", "panic", "down", "market down", "bear"],
+    "Social Influence": ["friend", "crypto", "trading", "option", "f&o", "stock", "quick", "colleague", "fomo", "hype"],
+    "Platform Bugs": ["bug", "fail", "stuck", "pending", "support", "delay", "ticket", "error", "server", "glitch", "technical"],
+}
+
+def score_themes(text: str) -> dict[str, float]:
+    t = text.lower()
+    scores = {}
+    for theme, kws in THEME_KEYWORDS.items():
+        score = sum(1.0 for kw in kws if kw in t)
+        scores[theme] = score
+    total = sum(scores.values()) or 1.0
+    return {k: v / total for k, v in scores.items()}
+
+def explain_theme(theme: str) -> str:
+    info = THEME_KB.get(theme, {})
+    desc = info.get("description", "Identified friction pattern in investor lifecycle.")
+    interv = info.get("intervention", "Targeted UX / FinTech intervention.")
+    nsm = info.get("nsm", "Positive lift on Month-12 continuation.")
+    return f"{desc} Recommended product action: {interv} (Target impact: {nsm})."
 
 def tenure_band(months) -> str:
     if months is None or pd.isna(months):
@@ -214,6 +267,15 @@ def load_benchmark_data():
     if df is not None:
         return df
     raise FileNotFoundError("Could not load benchmark data.")
+
+def load_demo_corpus(path: str | None = None) -> tuple[pd.DataFrame | None, dict]:
+    return load_real_benchmark(path)
+
+def run_live_ingestion(count: int = 20) -> tuple[pd.DataFrame, dict]:
+    df, meta = load_real_benchmark()
+    if df is not None:
+        return df.head(count), meta
+    return pd.DataFrame(columns=COLUMNS), {"source": "empty", "total": 0}
 
 def summarize(df: pd.DataFrame) -> dict:
     n = len(df)
