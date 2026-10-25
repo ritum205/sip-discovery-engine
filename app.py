@@ -1127,25 +1127,47 @@ Rules:
 - Never give direct investment advice (e.g., do not say "you must buy this").
 - Keep answers structured with crisp markdown, clean sub-headings, and clear bullet points."""
 
-@st.cache_data(show_spinner=False, ttl=86400)
 def _llm_call(question: str, context: str, model: str = 'gemini-1.5-flash') -> str | None:
     key = _secret('GEMINI_API_KEY') or _secret('ANTHROPIC_API_KEY')
     if not key:
+        st.error("⚠️ GEMINI_API_KEY is not found in Streamlit Secrets or Environment!")
         return None
     try:
         if _secret('GEMINI_API_KEY'):
             url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}'
-            payload = {'contents': [{'parts': [{'text': f'SYSTEM: {LLM_SYSTEM_PROMPT}\n\nQUESTION: {question}\n\nCONTEXT:\n{context}'}]}]}
-            r = requests.post(url, json=payload, timeout=30)
-            if r.ok:
+            headers = {'Content-Type': 'application/json'}
+            payload = {
+                'system_instruction': {
+                    'parts': [{'text': LLM_SYSTEM_PROMPT}]
+                },
+                'contents': [{
+                    'role': 'user',
+                    'parts': [{'text': f"Question: {question}\n\nBackground Context:\n{context[:3000]}"}]
+                }],
+                'generationConfig': {
+                    'temperature': 0.3,
+                    'maxOutputTokens': 1200
+                }
+            }
+            r = requests.post(url, headers=headers, json=payload, timeout=30)
+            if r.status_code == 200:
                 data = r.json()
                 return data['candidates'][0]['content']['parts'][0]['text'].strip()
-            return None
-        r = requests.post('https://api.anthropic.com/v1/messages', headers={'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'}, json={'model': model, 'max_tokens': 900, 'system': LLM_SYSTEM_PROMPT, 'messages': [{'role': 'user', 'content': f'QUESTION: {question}\n\n{context}'}]}, timeout=45)
+            else:
+                st.error(f"⚠️ Gemini API Error ({r.status_code}): {r.text}")
+                return None
+
+        # Anthropic fallback
+        r = requests.post('https://api.anthropic.com/v1/messages',
+                          headers={'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
+                          json={'model': model, 'max_tokens': 900, 'system': LLM_SYSTEM_PROMPT, 'messages': [{'role': 'user', 'content': f'QUESTION: {question}\n\n{context}'}]},
+                          timeout=45)
         if r.ok:
             return ''.join(b.get('text', '') for b in r.json().get('content', []) if b.get('type') == 'text').strip() or None
+        st.error(f"⚠️ Anthropic API Error ({r.status_code}): {r.text}")
         return None
-    except Exception:
+    except Exception as e:
+        st.error(f"⚠️ LLM Call Exception: {str(e)}")
         return None
 
 def llm_enabled() -> bool:
