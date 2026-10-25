@@ -1553,7 +1553,7 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
         with s_right:
             emo = df["Investor Emotional Trigger"].value_counts().head(8).sort_values()
             fig6 = go.Figure(go.Bar(
-                y=emo.index, x=emo.values, orientation="h", marker_color=NAVY,
+                y=emo.index, x=emo.values, orientation="h", marker_color=["#00D09C", "#1E293B", "#4A6FA5", "#E5A93C", "#D9534F", "#6C7A89", "#66C2A5", "#8A2BE2"],
                 hovertemplate="%{y}: %{x} records<extra></extra>"))
             fig6.update_layout(**PLOT_LAYOUT, height=420,
                                title=dict(text="<b>Chart 5 · Investor emotional triggers</b><br><span style='font-size:12px;color:#5A6B82'>"
