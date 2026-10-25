@@ -1130,32 +1130,36 @@ Rules:
 def _llm_call(question: str, context: str, model: str = 'gemini-1.5-flash') -> str | None:
     key = _secret('GEMINI_API_KEY') or _secret('ANTHROPIC_API_KEY')
     if not key:
-        st.error("⚠️ GEMINI_API_KEY is not found in Streamlit Secrets or Environment!")
+        st.error("GEMINI_API_KEY is not found in Streamlit Secrets or Environment!")
         return None
     try:
         if _secret('GEMINI_API_KEY'):
-            url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}'
+            candidate_endpoints = [
+                f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={key}',
+                f'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={key}',
+                f'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={key}',
+            ]
             headers = {'Content-Type': 'application/json'}
             payload = {
-                'system_instruction': {
-                    'parts': [{'text': LLM_SYSTEM_PROMPT}]
-                },
                 'contents': [{
                     'role': 'user',
-                    'parts': [{'text': f"Question: {question}\n\nBackground Context:\n{context[:3000]}"}]
+                    'parts': [{'text': f"{LLM_SYSTEM_PROMPT}\n\nQuestion: {question}\n\nBackground Context:\n{context[:3000]}"}]
                 }],
                 'generationConfig': {
                     'temperature': 0.3,
                     'maxOutputTokens': 1200
                 }
             }
-            r = requests.post(url, headers=headers, json=payload, timeout=30)
-            if r.status_code == 200:
-                data = r.json()
-                return data['candidates'][0]['content']['parts'][0]['text'].strip()
-            else:
-                st.error(f"⚠️ Gemini API Error ({r.status_code}): {r.text}")
-                return None
+            last_err = ""
+            for url in candidate_endpoints:
+                r = requests.post(url, headers=headers, json=payload, timeout=30)
+                if r.status_code == 200:
+                    data = r.json()
+                    return data['candidates'][0]['content']['parts'][0]['text'].strip()
+                last_err = f"Status {r.status_code}: {r.text}"
+
+            st.error(f"Gemini API Error: {last_err}")
+            return None
 
         # Anthropic fallback
         r = requests.post('https://api.anthropic.com/v1/messages',
@@ -1164,10 +1168,10 @@ def _llm_call(question: str, context: str, model: str = 'gemini-1.5-flash') -> s
                           timeout=45)
         if r.ok:
             return ''.join(b.get('text', '') for b in r.json().get('content', []) if b.get('type') == 'text').strip() or None
-        st.error(f"⚠️ Anthropic API Error ({r.status_code}): {r.text}")
+        st.error(f"Anthropic API Error ({r.status_code}): {r.text}")
         return None
     except Exception as e:
-        st.error(f"⚠️ LLM Call Exception: {str(e)}")
+        st.error(f"LLM Call Exception: {str(e)}")
         return None
 
 def llm_enabled() -> bool:
