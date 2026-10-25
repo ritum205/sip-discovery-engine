@@ -150,12 +150,14 @@ def score_themes(text: str) -> dict[str, float]:
     total = sum(scores.values()) or 1.0
     return {k: v / total for k, v in scores.items()}
 
-def explain_theme(theme: str) -> str:
-    info = THEME_KB.get(theme, {})
-    desc = info.get("description", "Identified friction pattern in investor lifecycle.")
-    interv = info.get("intervention", "Targeted UX / FinTech intervention.")
-    nsm = info.get("nsm", "Positive lift on Month-12 continuation.")
-    return f"{desc} Recommended product action: {interv} (Target impact: {nsm})."
+def explain_theme(text_or_theme: str) -> dict:
+    t = str(text_or_theme).lower()
+    matched = [kw for kws in THEME_KEYWORDS.values() for kw in kws if kw in t]
+    info = THEME_KB.get(str(text_or_theme).strip(), THEME_KB.get('Bank & Auto-Debit Friction', {}))
+    desc = info.get('description', 'Friction pattern in investor lifecycle.')
+    interv = info.get('intervention', 'Targeted UX fix.')
+    nsm = info.get('nsm', 'Positive lift on M12.')
+    return {'matched': matched, 'description': desc, 'intervention': interv, 'nsm': nsm, 'text': f'{desc} {interv}'}
 
 def tenure_band(months) -> str:
     if months is None or pd.isna(months):
