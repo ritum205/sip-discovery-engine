@@ -1126,14 +1126,14 @@ Rules:
 - Never recommend specific AMC schemes, fund names, or individual stocks.
 - Never give direct investment advice (e.g., do not say "you must buy this").
 - Keep answers structured with crisp markdown, clean sub-headings, and clear bullet points."""
-def _llm_call(question: str, context: str, model: str = 'gemini-3.8-flash') -> str | None:
+def _llm_call(question: str, context: str, model: str = 'gemini-3.5-flash-lite') -> str | None:
     key = _secret('GEMINI_API_KEY') or _secret('ANTHROPIC_API_KEY')
     if not key:
         return None
     try:
         if _secret('GEMINI_API_KEY'):
-            import time
-            url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}'
+            # Try the high-speed lite model first; fallback to 3.8 flash if unavailable
+            fast_models = ['gemini-3.5-flash-lite', 'gemini-3.8-flash']
             headers = {'Content-Type': 'application/json'}
             payload = {
                 'system_instruction': {
@@ -1141,41 +1141,33 @@ def _llm_call(question: str, context: str, model: str = 'gemini-3.8-flash') -> s
                 },
                 'contents': [{
                     'role': 'user',
-                    'parts': [{'text': f"Question: {question}\n\nBackground Context:\n{context[:2000]}"}]
+                    'parts': [{'text': f"Question: {question}\n\nContext:\n{context[:1200]}"}]
                 }],
                 'generationConfig': {
                     'temperature': 0.2,
-                    'maxOutputTokens': 800
+                    'maxOutputTokens': 500
                 }
             }
 
-            for attempt in range(2):
+            for m in fast_models:
+                url = f'https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}'
                 try:
-                    r = requests.post(url, headers=headers, json=payload, timeout=60)
+                    r = requests.post(url, headers=headers, json=payload, timeout=15)
                     if r.status_code == 200:
                         data = r.json()
                         return data['candidates'][0]['content']['parts'][0]['text'].strip()
-                    elif r.status_code in (429, 503):
-                        time.sleep(2 * (attempt + 1))
-                        continue
-                    else:
-                        st.error(f"Gemini API Error ({r.status_code}): {r.text}")
-                        return None
-                except requests.exceptions.Timeout:
-                    if attempt == 0:
-                        time.sleep(1.5)
-                        continue
-                    st.warning("The Gemini API is taking unusually long to respond right now due to server load. Please try submitting again.")
-                    return None
+                except requests.exceptions.RequestException:
+                    continue
 
+            st.warning("Gemini servers took too long to respond. Please click Ask again.")
             return None
 
         # Anthropic fallback
         r = requests.post(
             'https://api.anthropic.com/v1/messages',
             headers={'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
-            json={'model': model, 'max_tokens': 900, 'system': LLM_SYSTEM_PROMPT, 'messages': [{'role': 'user', 'content': f'QUESTION: {question}\n\n{context}'}]},
-            timeout=60
+            json={'model': model, 'max_tokens': 600, 'system': LLM_SYSTEM_PROMPT, 'messages': [{'role': 'user', 'content': f'QUESTION: {question}\n\n{context}'}]},
+            timeout=30
         )
         if r.ok:
             return ''.join(b.get('text', '') for b in r.json().get('content', []) if b.get('type') == 'text').strip() or None
@@ -1201,7 +1193,7 @@ def respond(question: str, data: pd.DataFrame) -> tuple[str, str]:
         facts = "\n\n".join(ln for ln in builtin.split("\n\n") if not ln.startswith(">"))
         context = (f"DATA CONTEXT (computed from {len(data)} public investor reviews; question type: {kind}):\n{facts}"
                    + (f"\n\nWEB CONTEXT (Wikipedia: {web['title']}):\n{web['extract']}" if web else ""))
-        model_name = "gemini-3.8-flash" if _secret('GEMINI_API_KEY') else _secret("ANTHROPIC_MODEL", "claude-sonnet-5-5")
+        model_name = "gemini-3.5-flash-lite" if _secret('GEMINI_API_KEY') else _secret("ANTHROPIC_MODEL", "claude-sonnet-5-5")
         llm = _llm_call(q, context, model_name)
         if llm:
             tail = ""
