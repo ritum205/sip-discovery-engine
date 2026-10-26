@@ -1127,46 +1127,30 @@ Rules:
 - Never give direct investment advice (e.g., do not say "you must buy this").
 - Keep answers structured with crisp markdown, clean sub-headings, and clear bullet points."""
 
-def _llm_call(question: str, context: str, model: str = 'gemini-1.5-flash') -> str | None:
+def _llm_call(question: str, context: str, model: str = 'gemini-3.8-flash') -> str | None:
     key = _secret('GEMINI_API_KEY') or _secret('ANTHROPIC_API_KEY')
     if not key:
         return None
     try:
         if _secret('GEMINI_API_KEY'):
-            import google.generativeai as genai
-            genai.configure(api_key=key)
-
-            # Auto-detect the best available generation model for this key
-            available_models = [
-                m.name for m in genai.list_models()
-                if 'generateContent' in m.supported_generation_methods
-            ]
-            
-            chosen_model = None
-            preferred = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro']
-            for pref in preferred:
-                match = [m for m in available_models if pref in m]
-                if match:
-                    chosen_model = match[0]
-                    break
-
-            if not chosen_model and available_models:
-                chosen_model = available_models[0]
-
-            if not chosen_model:
-                st.error(f"No text-generation models found for this Gemini API key. Models available: {available_models}")
+            url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={key}'
+            headers = {'Content-Type': 'application/json'}
+            payload = {
+                'system_instruction': {
+                    'parts': [{'text': LLM_SYSTEM_PROMPT}]
+                },
+                'contents': [{
+                    'role': 'user',
+                    'parts': [{'text': f"Question: {question}\n\nBackground Context:\n{context[:3000]}"}]
+                }]
+            }
+            r = requests.post(url, headers=headers, json=payload, timeout=30)
+            if r.status_code == 200:
+                data = r.json()
+                return data['candidates'][0]['content']['parts'][0]['text'].strip()
+            else:
+                st.error(f"Gemini API Error ({r.status_code}): {r.text}")
                 return None
-
-            gemini_model = genai.GenerativeModel(
-                model_name=chosen_model,
-                system_instruction=LLM_SYSTEM_PROMPT
-            )
-
-            prompt = f"Question: {question}\n\nBackground Context:\n{context[:3000]}"
-            response = gemini_model.generate_content(prompt)
-            if response and response.text:
-                return response.text.strip()
-            return None
 
         # Anthropic fallback
         r = requests.post(
@@ -1179,7 +1163,7 @@ def _llm_call(question: str, context: str, model: str = 'gemini-1.5-flash') -> s
             return ''.join(b.get('text', '') for b in r.json().get('content', []) if b.get('type') == 'text').strip() or None
         return None
     except Exception as e:
-        st.error(f"Gemini Error: {str(e)}")
+        st.error(f"LLM Call Exception: {str(e)}")
         return None
 def llm_enabled() -> bool:
     return bool(_secret('GEMINI_API_KEY') or _secret('ANTHROPIC_API_KEY'))
@@ -1199,7 +1183,7 @@ def respond(question: str, data: pd.DataFrame) -> tuple[str, str]:
         facts = "\n\n".join(ln for ln in builtin.split("\n\n") if not ln.startswith(">"))
         context = (f"DATA CONTEXT (computed from {len(data)} public investor reviews; question type: {kind}):\n{facts}"
                    + (f"\n\nWEB CONTEXT (Wikipedia: {web['title']}):\n{web['extract']}" if web else ""))
-        model_name = "gemini-1.5-flash" if _secret('GEMINI_API_KEY') else _secret("ANTHROPIC_MODEL", "claude-sonnet-5-5")
+        model_name = "gemini-3.8-flash" if _secret('GEMINI_API_KEY') else _secret("ANTHROPIC_MODEL", "claude-sonnet-5-5")
         llm = _llm_call(q, context, model_name)
         if llm:
             tail = ""
@@ -1207,7 +1191,7 @@ def respond(question: str, data: pd.DataFrame) -> tuple[str, str]:
                 tail = "\n\n**What investors actually said**\n\n" + "\n\n".join(quotes[:3])
             if web:
                 tail += f"\n\n[Background: {web['title']} on Wikipedia ↗]({web['url']})"
-            provider_label = "Google Gemini 1.5 Flash" if _secret('GEMINI_API_KEY') else "Claude"
+            provider_label = "Google Gemini 3.8 Flash" if _secret('GEMINI_API_KEY') else "Claude"
             return llm + tail, f"{provider_label} + discovery data" + (" + Wikipedia" if web else "")
 
     source = {"data": "Review data synthesis", "solution": "Review data + product playbook",
@@ -1281,7 +1265,7 @@ def _rerun() -> None:
 def render_chat(data: pd.DataFrame, source_note: str = "") -> None:
     with chat_slot:
         if llm_enabled():
-            st.caption("🟢 **AI Enabled:** Google Gemini 1.5 Flash (Live Synthesis)")
+            st.caption("🟢 **AI Enabled:** Google Gemini 3.8 Flash (Live Synthesis)")
         st.session_state["chat_history"] = _normalize_history(st.session_state.get("chat_history", []))
 
         pill_cols = st.columns(len(SUGGESTED_QUESTIONS))
