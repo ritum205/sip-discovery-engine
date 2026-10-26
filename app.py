@@ -1133,7 +1133,7 @@ def _llm_call(question: str, context: str, model: str = 'gemini-3.8-flash') -> s
     try:
         if _secret('GEMINI_API_KEY'):
             import time
-            models_to_try = [model, 'gemini-2.5-flash'] if model != 'gemini-2.5-flash' else [model]
+            url = f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}'
             headers = {'Content-Type': 'application/json'}
             payload = {
                 'system_instruction': {
@@ -1141,24 +1141,33 @@ def _llm_call(question: str, context: str, model: str = 'gemini-3.8-flash') -> s
                 },
                 'contents': [{
                     'role': 'user',
-                    'parts': [{'text': f"Question: {question}\n\nBackground Context:\n{context[:3000]}"}]
-                }]
+                    'parts': [{'text': f"Question: {question}\n\nBackground Context:\n{context[:2000]}"}]
+                }],
+                'generationConfig': {
+                    'temperature': 0.2,
+                    'maxOutputTokens': 800
+                }
             }
 
-            for m in models_to_try:
-                url = f'https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}'
-                for attempt in range(2):
-                    r = requests.post(url, headers=headers, json=payload, timeout=30)
+            for attempt in range(2):
+                try:
+                    r = requests.post(url, headers=headers, json=payload, timeout=60)
                     if r.status_code == 200:
                         data = r.json()
                         return data['candidates'][0]['content']['parts'][0]['text'].strip()
                     elif r.status_code in (429, 503):
-                        time.sleep(1.5 * (attempt + 1))
+                        time.sleep(2 * (attempt + 1))
                         continue
                     else:
-                        break
+                        st.error(f"Gemini API Error ({r.status_code}): {r.text}")
+                        return None
+                except requests.exceptions.Timeout:
+                    if attempt == 0:
+                        time.sleep(1.5)
+                        continue
+                    st.warning("The Gemini API is taking unusually long to respond right now due to server load. Please try submitting again.")
+                    return None
 
-            st.warning("Gemini servers are currently experiencing high traffic. Please try asking again in a few moments.")
             return None
 
         # Anthropic fallback
@@ -1166,7 +1175,7 @@ def _llm_call(question: str, context: str, model: str = 'gemini-3.8-flash') -> s
             'https://api.anthropic.com/v1/messages',
             headers={'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json'},
             json={'model': model, 'max_tokens': 900, 'system': LLM_SYSTEM_PROMPT, 'messages': [{'role': 'user', 'content': f'QUESTION: {question}\n\n{context}'}]},
-            timeout=45
+            timeout=60
         )
         if r.ok:
             return ''.join(b.get('text', '') for b in r.json().get('content', []) if b.get('type') == 'text').strip() or None
