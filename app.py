@@ -1135,12 +1135,33 @@ def _llm_call(question: str, context: str, model: str = 'gemini-1.5-flash') -> s
         if _secret('GEMINI_API_KEY'):
             import google.generativeai as genai
             genai.configure(api_key=key)
+
+            # Auto-detect the best available generation model for this key
+            available_models = [
+                m.name for m in genai.list_models()
+                if 'generateContent' in m.supported_generation_methods
+            ]
             
+            chosen_model = None
+            preferred = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro']
+            for pref in preferred:
+                match = [m for m in available_models if pref in m]
+                if match:
+                    chosen_model = match[0]
+                    break
+
+            if not chosen_model and available_models:
+                chosen_model = available_models[0]
+
+            if not chosen_model:
+                st.error(f"No text-generation models found for this Gemini API key. Models available: {available_models}")
+                return None
+
             gemini_model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
+                model_name=chosen_model,
                 system_instruction=LLM_SYSTEM_PROMPT
             )
-            
+
             prompt = f"Question: {question}\n\nBackground Context:\n{context[:3000]}"
             response = gemini_model.generate_content(prompt)
             if response and response.text:
@@ -1160,7 +1181,6 @@ def _llm_call(question: str, context: str, model: str = 'gemini-1.5-flash') -> s
     except Exception as e:
         st.error(f"Gemini Error: {str(e)}")
         return None
-
 def llm_enabled() -> bool:
     return bool(_secret('GEMINI_API_KEY') or _secret('ANTHROPIC_API_KEY'))
 
