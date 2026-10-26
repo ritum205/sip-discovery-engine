@@ -4,13 +4,41 @@ engine_core.py — SIP Retention AI Discovery Engine
 
 from __future__ import annotations
 
+import datetime as _dt
 import io
 import json
 import os
 import random
 import re
 from collections import Counter
+
+import numpy as np
 import pandas as pd
+
+
+def excel_safe(val):
+    """Convert any value to something openpyxl can write (fixes 'Cannot convert <NA> to Excel')."""
+    if val is None:
+        return ""
+    if isinstance(val, (list, tuple, set)):
+        return ", ".join(map(str, val))
+    if isinstance(val, dict):
+        return ", ".join(f"{k}: {v}" for k, v in val.items())
+    try:
+        if pd.isna(val):  # pd.NA, NaN, NaT
+            return ""
+    except (TypeError, ValueError):
+        pass
+    if isinstance(val, (pd.Timestamp, _dt.datetime, _dt.date)):
+        return str(val)[:10]
+    if isinstance(val, (bool, np.bool_)):
+        return bool(val)
+    if isinstance(val, (np.integer, int)):
+        return int(val)
+    if isinstance(val, (np.floating, float)):
+        f = float(val)
+        return int(f) if f.is_integer() else f
+    return str(val)
 
 COLUMNS = [
     "Product",
@@ -317,9 +345,13 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
 
+    cols = COLUMNS + [c for c in ("Year", "Label Source") if c in df.columns]
+    for c in COLUMNS:
+        if c not in df.columns:
+            df = df.assign(**{c: ""})
     n = len(df)
     last = max(n + 1, 2)
-    ds_name = f"Discovery Dataset ({n} Rows)"
+    ds_name = f"Discovery Dataset ({n} Rows)"[:31]
 
     F = "Arial"
     hdr_font = Font(name=F, bold=True, color="FFFFFF", size=11)
@@ -335,21 +367,27 @@ def build_discovery_workbook(df: pd.DataFrame, provenance_note: str | None = Non
     ws = wb.active
     ws.title = ds_name
 
-    for c, col in enumerate(COLUMNS, start=1):
+    link_font = Font(name=F, size=10, color="0563C1", underline="single")
+    url_col = cols.index("Source URL") + 1
+    for c, col in enumerate(cols, start=1):
         cell = ws.cell(row=1, column=c, value=col)
         cell.font, cell.fill, cell.alignment, cell.border = hdr_font, hdr_fill, center, box
-        ws.column_dimensions[get_column_letter(c)].width = 25
+        ws.column_dimensions[get_column_letter(c)].width = 50 if col == "Original Comment" else 25
     ws.row_dimensions[1].height = 30
 
-    for r, rec in enumerate(df[COLUMNS].itertuples(index=False), start=2):
+    for r, rec in enumerate(df[cols].itertuples(index=False), start=2):
         for c, val in enumerate(rec, start=1):
-            cell = ws.cell(row=r, column=c, value=val)
+            clean = excel_safe(val)
+            cell = ws.cell(row=r, column=c, value=clean)
             cell.font, cell.alignment, cell.border = body, wrap_top, box
             if r % 2 == 0:
                 cell.fill = light_fill
+            if c == url_col and isinstance(clean, str) and clean.startswith("http"):
+                cell.hyperlink = clean
+                cell.font = link_font
 
     ws.freeze_panes = "E2"
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(COLUMNS))}{last}"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{last}"
 
     buf = io.BytesIO()
     wb.save(buf)

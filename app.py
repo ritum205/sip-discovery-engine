@@ -68,7 +68,8 @@ st.markdown(
   .pill {{ display: inline-block; background: rgba(0,208,156,0.18); color: {EMERALD};
           border: 1px solid rgba(0,208,156,0.5); border-radius: 999px; padding: 2px 12px;
           font-size: 0.78rem; font-weight: 600; margin-bottom: 10px; letter-spacing: .3px; }}
-  .card {{ background: #fff; border: 1px solid #E3E8EF; border-radius: 14px; padding: 16px 18px;
+  .card {{ min-height: 140px; display: flex; flex-direction: column; justify-content: space-between;
+           box-sizing: border-box; background: #fff; border: 1px solid #E3E8EF; border-radius: 14px; padding: 16px 18px;
           height: 100%; box-shadow: 0 1px 2px rgba(27,54,93,0.04); }}
   .card .label {{ color: #5A6B82; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .6px; font-weight: 600; }}
   .card .value {{ color: {NAVY}; font-size: 1.75rem; font-weight: 700; margin-top: 4px; line-height: 1.15; }}
@@ -85,14 +86,37 @@ st.markdown(
   .scope-badge {{ display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(0,208,156,.45);
                  background: rgba(0,208,156,.08); color: {NAVY}; border-radius: 999px; padding: 5px 14px;
                  font-size: 0.84rem; margin: 2px 0 14px 0; }}
-  /* Pulsing glow on the "Ask" button (the only form submit button on the page). Box-shadow only,
-     so colours, size and click handling are unchanged. */
-  div[data-testid="stFormSubmitButton"] button {{ animation: pulse 2.4s ease-out infinite; }}
-  @keyframes pulse {{
-      0%   {{ box-shadow: 0 0 0 0 rgba(0,208,156,0.55); }}
-      70%  {{ box-shadow: 0 0 0 10px rgba(0,208,156,0); }}
-      100% {{ box-shadow: 0 0 0 0 rgba(0,208,156,0); }} }}
-  @media (prefers-reduced-motion: reduce) {{ div[data-testid="stFormSubmitButton"] button {{ animation: none; }} }}
+  /* Pulsing "Ask" button. Several selectors because Streamlit's test-ids differ between versions;
+     .st-key-ask_btn is the keyed container wrapping the button (Streamlit >= 1.39). */
+  div[data-testid="stFormSubmitButton"] button,
+  button[data-testid="stBaseButton-primaryFormSubmit"],
+  button[data-testid="baseButton-primaryFormSubmit"],
+  .st-key-ask_btn button {{
+      background: linear-gradient(135deg, #00D09C 0%, #00B386 100%) !important;
+      color: #fff !important; border: none !important; font-weight: 700 !important;
+      animation: pulse-glow 2s infinite ease-in-out !important; }}
+  @keyframes pulse-glow {{
+      0%   {{ box-shadow: 0 0 0 0 rgba(0,208,156,0.7);  transform: scale(1); }}
+      50%  {{ box-shadow: 0 0 0 10px rgba(0,208,156,0); transform: scale(1.02); }}
+      100% {{ box-shadow: 0 0 0 0 rgba(0,208,156,0);    transform: scale(1); }} }}
+  @media (prefers-reduced-motion: reduce) {{
+      div[data-testid="stFormSubmitButton"] button, .st-key-ask_btn button {{ animation: none !important; }} }}
+  /* Suggested-question chips */
+  .st-key-suggest_chips button {{ border-radius: 999px !important; min-height: 54px; white-space: normal !important;
+      line-height: 1.25 !important; font-size: 0.86rem !important; border: 1px solid rgba(0,208,156,.45) !important; }}
+  .st-key-suggest_chips button:hover {{ background: rgba(0,208,156,.08) !important; }}
+  /* Evidence cards */
+  .ev-card {{ border: 1px solid #E3E8EF; border-radius: 12px; padding: 14px 16px; background: #fff; height: 100%;
+             box-shadow: 0 1px 2px rgba(27,54,93,0.04); margin-bottom: 12px; }}
+  .ev-meta {{ font-size: 0.82rem; color: #5A6B82; margin-bottom: 8px; }}
+  .ev-meta b {{ color: {NAVY}; }}
+  .ev-meta a {{ color: #2563EB; }}
+  .ev-quote {{ border-left: 3px solid #9BB3D1; padding: 2px 0 2px 12px; color: #1F2937; font-size: 0.93rem; line-height: 1.5; }}
+  .ev-trans {{ margin-top: 10px; background: rgba(0,208,156,.07); border: 1px solid rgba(0,208,156,.35);
+              border-radius: 10px; padding: 8px 12px; font-size: 0.9rem; color: #1F2937; }}
+  .ai-badge {{ display: inline-block; font-size: 0.72rem; font-weight: 700; color: #00805F; background: rgba(0,208,156,.15);
+              border-radius: 999px; padding: 1px 9px; margin-bottom: 4px; }}
+  .ev-tags {{ margin-top: 8px; font-size: 0.76rem; color: #5A6B82; }}
 </style>
 """,
     unsafe_allow_html=True,
@@ -129,6 +153,48 @@ MASTER_SCHEMA = ["Product", "Source Platform", "Source URL", "Original Comment",
                  "SIP Stage", "Problem Theme", "Problem Behaviour", "Problem Root Cause", "Investor Emotional Trigger",
                  "Churn Preventability", "Year"]
 SOURCE_FILES = ["wb.xlsx", "reddit_sip_reviews.csv", "youtube_sip_comments.csv"]
+PLATFORMS = ["Play Store", "Reddit", "YouTube"]
+VIEW_FULL, VIEW_DEEP = "Full Discovery Dataset (All Sources)", "Validated Retention Deep-Dive"
+# wb.xlsx repeats each of its 32 comments ~7 times. Counts follow the raw extract by default;
+# set True to drop exact duplicate rows (same comment + URL) from the combined dataset.
+DROP_DUPLICATE_ROWS = False
+# wb.xlsx labels were assigned in rotation and don't match the comments, so the Full view uses validated
+# labels where a row is in the validated set and keyword auto-tags elsewhere. Set True to keep wb labels.
+KEEP_WB_LABELS = False
+
+AUTO_TAG_RULES = {'Disappointment Valley': [('\\b(no|zero|negative|flat|poor|low|bad)\\s+returns?\\b', 3), ('\\breturns?\\b.{0,30}\\b(fd|fixed deposit|savings account|rd)\\b', 3), ('\\b(fd|fixed deposit)\\b.{0,40}\\bbetter\\b', 3), ('\\b(red|in loss|losing money|lost money|xirr)\\b', 2), ("\\bnot worth\\b|\\bwaste of (time|money)\\b|\\bwhat'?s the point\\b", 2), ('\\b(a|one|1)\\s*(year|yr)\\b.{0,40}\\b(nothing|same|flat|loss)\\b', 3), ('\\bdisappoint', 2)], 'Bank & Auto-Debit Friction': [('\\bmandate\\b', 3), ('\\b(auto[\\s-]?pay|auto[\\s-]?debit|e-?nach|nach)\\b', 3), ('\\bbounce(d)?\\b|\\bdebit failed\\b|\\bpayment failed\\b|\\binsufficient (funds|balance)\\b', 3), ('\\b(penalty|bounce charge|charges? by (my )?bank)\\b', 2), ('\\bchang(e|ed|ing) (my )?bank\\b|\\bnew bank account\\b', 2), ('\\bupi\\b.{0,20}\\b(fail|limit|expired?)\\b', 2)], 'Same-Category Overlap': [('\\boverlap(ping)?\\b', 4), ('\\b(too many|multiple|\\d+|five|four|six|seven) (mutual )?funds\\b', 2), ('\\b(same|similar) (stocks?|holdings?|portfolio)\\b', 3), ('\\b(flexi ?cap|large ?cap|mid ?cap|small ?cap|index fund).{0,40}\\b(another|also|again)\\b', 2), ('\\bconsolidat', 3), ('\\b(confus|clutter|messy portfolio)', 2)], 'Directionless Onboarding': [("\\b(no|without a|didn'?t have a|never had a) (goal|plan|reason)\\b", 4), ('\\bjust started\\b|\\bstarted because\\b|\\bsaw (a|on) (youtube|instagram|reel)\\b', 2), ("\\bdon'?t (know|understand) (why|what)\\b", 2), ('\\b(random(ly)?|blindly|impulse)\\b', 2), ('\\bwhat (am i|was i) (investing|saving) for\\b', 4), ('\\bgoal\\b', 1), ('\\b(paisa|paise|pesa|money|amount|refund|invested amount)\\b.{0,50}\\b(wapas|vapas|back|credit\\w*|account|withdraw\\w*|milega|aayega|aaye)\\b', 3), ('cancel\\w*.{0,60}\\b(redeem\\w*|withdraw\\w*|nikal\\w*)\\b|\\b(redeem\\w*|withdraw\\w*)\\b.{0,60}cancel', 3), ('\\b(lock[- ]?in|lock period|3 yrs|3 years|elss)\\b', 2), ('\\b(regular plan|direct plan|by mistake|galti se|mistakenly|accidentally)\\b', 3)], 'Liquidity Shortage': [('\\b(lost|losing) (my )?job\\b|\\blaid off\\b|\\blayoff\\b|\\bjob change\\b|\\bnotice period\\b', 4), ('\\b(rent|emi|loan|wedding|medical|hospital|emergency|fees)\\b', 2), ("\\b(tight|short|no) (on )?(money|cash|funds)\\b|\\bcan'?t afford\\b|\\bcash ?crunch\\b", 4), ('\\bneeded (the )?money\\b|\\bneed(ed)? cash\\b', 3), ('\\bsalary (delayed|cut|late)\\b', 3), ('\\b(paise na ho|paisa nahi|no money|cash short|short of cash|salary)\\b', 3)], 'Market Correction Panic': [('\\b(crash(ed|ing)?|correction|fall(ing)?|bloodbath|dip|down \\d+%|sensex|nifty)\\b', 3), ('\\b(scared|panic(ked)?|fear|afraid|worried)\\b', 3), ('\\b(war|election|recession|tariff|fii selling)\\b', 2), ('\\bwill go (lower|down)\\b|\\bmarket (is|was) (down|falling)\\b', 3)], 'Social Influence': [('\\b(friend|friends|colleague|cousin|brother|uncle|everyone)\\b.{0,40}\\b(said|told|making|earning|switched|moved)\\b', 3), ('\\b(f&o|futures|options trading|crypto|intraday|direct stocks?)\\b', 3), ('\\b(finfluencer|youtuber|telegram|tip)\\b', 2), ('\\bmutual funds? (are|is) (for|too) (slow|boring|old)\\b', 3)], 'Platform Bugs': [('\\b(bug|glitch|crash(es|ed)? (the )?app|app (is )?(not working|crashing|hangs))\\b', 4), ('\\b(wrong|incorrect|not updated|mismatch)\\b.{0,30}\\b(nav|units|amount|value|statement|status)\\b', 3), ('\\b(showing|shows|showed) (cancelled|failed|pending)\\b', 3), ('\\b(support|customer care|ticket)\\b.{0,30}\\b(no response|useless|not respond)\\b', 2), ('\\b(otp|login|kyc)\\b.{0,20}\\b(issue|problem|fail)\\b', 2), ('cancel\\w*.{0,60}\\b(still|again|phir|fir|bhi|after)\\b.{0,40}\\b(deduct\\w*|debit\\w*|cut|kat\\w*|charge\\w*)', 4), ('\\b(deduct\\w*|debit\\w*|cut|kat\\w*)\\b.{0,40}\\b(after|even after|ke baad|ke bad)\\b.{0,20}cancel', 4), ('(cancel|pause|resume|restart)\\w*.{0,40}\\b(nahi|nhi|not|nai)\\b.{0,25}\\b(ho|hua|work\\w*|show\\w*|aa|dikh\\w*|allow\\w*)', 3), ('\\b(in progress|processing|process me|pending|progress me)\\b', 2), ('\\boption\\b.{0,25}\\b(nahi|nhi|not|nai|missing)\\b|\\b(no|not)\\b.{0,10}\\boption\\b', 3), ('\\b(registration not valid|cannot be cancelled|not allowed)\\b', 4)]}
+_AUTO_TAG = {t: [(re.compile(p, re.I), w) for p, w in rules] for t, rules in AUTO_TAG_RULES.items()}
+_DEVANAGARI = re.compile(r"[\u0900-\u097F]")
+_HINGLISH = set("""hai hain nahi nhi kya kaise kese kare kre karna krna karu kru mera mere meri maine mene bhai paisa
+paise raha rha rahi rhi gaya gya gyi hoga hogi lekin aur toh bhi wala wali jata jati kab kyu kyun abhi sakte skte chahiye
+pehle phir fir dubara kar kr ho""".split())
+
+
+def auto_tag_theme(text: str) -> str:
+    """Keyword auto-tag for rows outside the validated set (about half agree with validated labels)."""
+    scores = {t: sum(w for rx, w in rules if rx.search(str(text))) for t, rules in _AUTO_TAG.items()}
+    theme, best = max(scores.items(), key=lambda kv: kv[1])
+    return theme if best >= 2 else "Unclassified"
+
+
+def needs_translation(text: str) -> bool:
+    """Devanagari script or romanised Hindi (Hinglish)."""
+    t = str(text)
+    return bool(_DEVANAGARI.search(t)) or len(set(re.findall(r"[a-z]+", t.lower())) & _HINGLISH) >= 2
+
+
+def normalize_platform(value) -> str:
+    v = str(value).lower()
+    if "reddit" in v:
+        return "Reddit"
+    if "youtube" in v or "youtu.be" in v:
+        return "YouTube"
+    return "Play Store"  # Google Play Store and Apple App Store reviews
+
+
+def _text_key(comment, url) -> tuple:
+    return (" ".join(str(comment).split()).lower(), str(url).strip())
+
 
 
 def _find_data_file(name: str):
@@ -149,7 +215,9 @@ def _clean_schema(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = pd.NA
     df = df[MASTER_SCHEMA].copy()
     df["Original Comment"] = df["Original Comment"].map(lambda x: html.unescape(str(x)).strip() if pd.notna(x) else "")
-    df["Product"] = df["Product"].map(lambda p: "Groww" if "groww" in str(p).lower() else "Other")
+    df["Product"] = ["Groww" if ("groww" in str(p).lower() or "groww" in str(c).lower()) else "Other"
+                     for p, c in zip(df["Product"], df["Original Comment"])]
+    df["Source Platform"] = df["Source Platform"].map(normalize_platform)
     df["Year"] = pd.to_numeric(df["Year"], errors="coerce").astype("Int64")
     df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"], errors="coerce").astype("Int64")
     return df
@@ -176,8 +244,10 @@ def load_master_dataset():
         return pd.DataFrame(columns=MASTER_SCHEMA), info
     master = pd.concat(frames, ignore_index=True)
     info["extracted"] = len(master)
-    master = master.drop_duplicates(subset=["Original Comment", "Source URL"]).reset_index(drop=True)
+    if DROP_DUPLICATE_ROWS:
+        master = master.drop_duplicates(subset=["Original Comment", "Source URL"]).reset_index(drop=True)
     info["duplicates"] = info["extracted"] - len(master)
+    info["by_platform"] = master["Source Platform"].value_counts().reindex(PLATFORMS, fill_value=0).to_dict()
     return master, info
 
 
@@ -204,9 +274,60 @@ def load_golden_set():
             df[col] = pd.NA
     df = df[MASTER_SCHEMA].copy()
     df["Original Comment"] = df["Original Comment"].astype(str).map(html.unescape)
+    df["Source Platform"] = df["Source Platform"].map(normalize_platform)
+    df["Product"] = ["Groww" if ("groww" in str(p).lower() or "groww" in str(c).lower()) else "Other"
+                     for p, c in zip(df["Product"], df["Original Comment"])]
     df["Year"] = pd.to_numeric(df["Year"], errors="coerce").astype("Int64")
     df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"], errors="coerce").astype("Int64")
     return df, name, raw
+
+
+@st.cache_data(show_spinner=False)
+def load_golden_glosses() -> dict:
+    """English glosses from the 'Reviewer Notes' sheet of golden_set.xlsx (if present), keyed by comment."""
+    import io
+    path = _find_data_file("golden_set.xlsx")
+    if path is None:
+        return {}
+    try:
+        sheets = pd.read_excel(io.BytesIO(path.read_bytes()), sheet_name=None)
+        gs, notes = sheets.get("Golden Set"), sheets.get("Reviewer Notes")
+        if gs is None or notes is None or len(gs) != len(notes) or notes.shape[1] < 3:
+            return {}
+        return {" ".join(html.unescape(str(c)).split()).lower(): str(g)
+                for c, g in zip(gs["Original Comment"], notes.iloc[:, 2]) if not str(g).startswith("(English")}
+    except Exception:
+        return {}
+
+
+@st.cache_data(show_spinner=False)
+def build_full_view(master: pd.DataFrame, golden: pd.DataFrame | None) -> pd.DataFrame:
+    """Full Discovery dataset for analysis: validated labels where a row is in the validated set,
+    keyword auto-tagged Problem Theme elsewhere (clearly marked in 'Label Source')."""
+    df = master.copy()
+    analytic = ["User Type", "SIP Tenure (Months)", "SIP Stage", "Problem Theme", "Problem Behaviour",
+                "Problem Root Cause", "Investor Emotional Trigger", "Churn Preventability"]
+    if not KEEP_WB_LABELS:
+        df[analytic] = pd.NA
+    df["Label Source"] = "Auto-tagged (keyword, unvalidated)"
+    if golden is not None:
+        lookup = {_text_key(c, u): i for i, (c, u) in enumerate(zip(golden["Original Comment"], golden["Source URL"]))}
+        for idx, (c, u) in enumerate(zip(df["Original Comment"], df["Source URL"])):
+            gi = lookup.get(_text_key(c, u))
+            if gi is not None:
+                for col in analytic:
+                    df.at[idx, col] = golden.iloc[gi][col]
+                df.at[idx, "Label Source"] = "Validated"
+    unl = df["Label Source"] != "Validated"
+    df.loc[unl, "Problem Theme"] = df.loc[unl, "Original Comment"].map(auto_tag_theme)
+    df.loc[df["Problem Theme"] == "Unclassified", "Label Source"] = "Unclassified"
+    df["SIP Stage"] = df["SIP Stage"].fillna("Not stated")
+    df["Churn Preventability"] = df["Churn Preventability"].fillna("Not assessed")
+    df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"], errors="coerce").astype("Int64")
+    kb = ec.THEME_KB
+    df["Recommended Groww Intervention"] = df["Problem Theme"].map(lambda t: kb.get(t, {}).get("intervention", pd.NA))
+    df["Target North-Star Metric Impact"] = df["Problem Theme"].map(lambda t: kb.get(t, {}).get("nsm", pd.NA))
+    return df
 
 
 @st.cache_data(show_spinner=False)
@@ -315,11 +436,11 @@ friction explain work works between difference better best good bad worse worst 
 compare comparison really actually way ways thing things know need want like""".split())
 
 SUGGESTED_QUESTIONS = [
-    "Why do people cancel their SIP?",
-    "What are the top bank auto-debit failure reasons?",
-    "SIP vs lumpsum?",
-    "Should I pause or cancel my SIP?",
-    "How can Groww reduce SIP churn?"
+    "Why do investors pause or stop their SIPs?",
+    "Why do AutoPay payments fail?",
+    "What do investors say about returns in the first year?",
+    "How do investors react to a market crash?",
+    "What problems do investors face when starting a SIP?",
 ]
 
 # ---------------------------------------------------------------------------
@@ -387,6 +508,35 @@ KNOWLEDGE_BASE = [
             "one tap away.",
             "Auto-resume paused SIPs with a single neutral reminder a few days before.",
             "Track the pause-instead-of-cancel ratio and the reactivation rate.",
+        ],
+    },
+    {
+        "topic": "What a mutual fund is and how it works",
+        "keys": ["what is mutual fund", "what is a mutual fund", "what are mutual funds", "mutual fund mean",
+                 "how do mutual funds work", "how does a mutual fund work", "mutual fund basics", "what is an amc",
+                 "what is nav"],
+        "weight": 3,
+        "themes": ["Directionless Onboarding", "Disappointment Valley"],
+        "short": "A mutual fund pools money from many investors and invests it in a portfolio of stocks, bonds or "
+                 "other assets, managed by a professional fund manager at an asset management company (AMC) "
+                 "regulated by SEBI.",
+        "points": [
+            "**Units and NAV:** investors buy units at the day's net asset value (NAV), the per-unit value of the "
+            "fund's holdings after expenses. The value of an investment rises and falls with the NAV.",
+            "**Main types:** equity funds (shares, higher volatility), debt funds (bonds, money-market), hybrid "
+            "funds (a mix) and index funds or ETFs (track a market index at low cost).",
+            "**Costs:** an annual expense ratio is deducted inside the NAV; some funds charge an exit load on early "
+            "redemption. Direct plans have lower expense ratios than regular plans.",
+            "**Ways to invest:** a SIP (fixed amount at regular intervals) or a lumpsum (one-time amount).",
+            "**Returns are market-linked and not guaranteed**, unlike a fixed deposit. Each scheme's documents set "
+            "out its objective, risks and costs.",
+        ],
+        "behaviour": "Many first-time investors meet mutual funds through an app's 'start a SIP' button and treat "
+                     "them like a recurring deposit. When the value fluctuates, the mismatch between that mental "
+                     "model and market-linked reality is a common trigger for stopping.",
+        "practice": [
+            "Explain NAV, units and market-linked returns in one screen before the first SIP.",
+            "Show units accumulated alongside value, so early fluctuations have context.",
         ],
     },
     {
@@ -830,13 +980,24 @@ def _retrieve(q: str, data: pd.DataFrame) -> dict:
         themes = [t for t, s in scored.items() if s == best and s >= 3]
     products = [p for p, syns in PRODUCT_SYNONYMS.items() if _match_any(q, syns)]
     behaviours = [b for b, syns in BEHAVIOUR_SYNONYMS.items() if _match_any(q, syns)]
-    asks_when = _match_any(q, ["when", "month", "tenure", "how long", "first year", "cliff", "stage", "timing"])
+    asks_when = bool(re.search(
+        r"\bwhen (do|does|did|are|is|will)\b.*\b(stop|cancel|pause|quit|drop|churn|break|leave)|\bwhich month\b|"
+        r"\bwhat month\b|\bhow long\b|\btenure\b|\bcliff\b|\bat what (stage|point)\b|\btiming\b|"
+        r"\bmonth \d+|\b\d+(st|nd|rd|th)? month", q))
+    asks_start = bool(re.search(r"\b(start|starting|started|begin|beginning|new to|first sip|first[- ]time|"
+                                r"onboard\w*|set ?up|setting up)\b", q))
     asks_feel = _match_any(q, ["feel", "emotion", "sentiment", "frustrat", "angry", "mood"])
     consumed = {w for syns in list(THEME_SYNONYMS.values()) + list(PRODUCT_SYNONYMS.values())
                 + list(BEHAVIOUR_SYNONYMS.values()) for w in syns}
     tokens = [w for w in re.findall(r"[a-z&]{3,}", q) if w not in STOPWORDS and w not in consumed]
 
     subset, scope_bits, notes = data, [], []
+    if asks_start and "User Type" in data.columns:
+        early = data[(data["User Type"].astype(str) == "New") |
+                     (pd.to_numeric(data["SIP Tenure (Months)"], errors="coerce") <= 1)]
+        if len(early) >= 3:
+            subset = early
+            scope_bits.append("investors starting out (first SIP or first instalment)")
     if themes:
         subset = subset[subset["Problem Theme"].isin(themes)]
         scope_bits.append(" / ".join(themes))
@@ -913,10 +1074,11 @@ def _data_answer(ctx: dict, total: int) -> list[str]:
 
     ten_all = subset["SIP Tenure (Months)"].dropna()
     if ctx["asks_when"] and len(ten_all):
-        cliff_n = int(((ten_all >= 10) & (ten_all <= 14)).sum())
-        out.append(f"**Short answer:** most drop-offs cluster in **months 10–14**: {_pct(cliff_n, len(ten_all))} of the "
-                   f"{len(ten_all)} records that state a tenure (median **{int(ten_all.median())} months**). "
-                   f"The leading driver in this view is **{top_theme}**.")
+        bands = ten_all.map(ec.tenure_band).value_counts()
+        out.append(f"**Short answer:** only **{len(ten_all)}** of these {n} records say how long the SIP ran. Among them "
+                   f"the most common window is **{bands.index[0]}** ({bands.iloc[0]} records, median "
+                   f"{int(ten_all.median())} months). The leading driver in this view is **{top_theme}**."
+                   + (" Treat timing as indicative: the sample is small." if len(ten_all) < 20 else ""))
     elif ctx["overall"]:
         out.append(f"**Short answer:** across all **{total}** records, the leading driver of SIP drop-off is "
                    f"**{top_theme}** ({_pct(theme_counts.iloc[0], total)} of records), followed by "
@@ -1268,35 +1430,9 @@ def _llm_call(question: str, context: str, model: str = 'gemini-3.5-flash-lite')
         return None
     try:
         if _secret('GEMINI_API_KEY'):
-            # Try the high-speed lite model first; fallback to 3.8 flash if unavailable
-            fast_models = ['gemini-3.5-flash-lite', 'gemini-3.8-flash']
-            headers = {'Content-Type': 'application/json'}
-            payload = {
-                'system_instruction': {
-                    'parts': [{'text': LLM_SYSTEM_PROMPT}]
-                },
-                'contents': [{
-                    'role': 'user',
-                    'parts': [{'text': f"Question: {question}\n\nContext:\n{context[:1200]}"}]
-                }],
-                'generationConfig': {
-                    'temperature': 0.2,
-                    'maxOutputTokens': 500
-                }
-            }
-
-            for m in fast_models:
-                url = f'https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}'
-                try:
-                    r = requests.post(url, headers=headers, json=payload, timeout=15)
-                    if r.status_code == 200:
-                        data = r.json()
-                        return data['candidates'][0]['content']['parts'][0]['text'].strip()
-                except requests.exceptions.RequestException:
-                    continue
-
-            st.warning("Gemini servers took too long to respond. Please click Ask again.")
-            return None
+            text, status = gemini_generate(LLM_SYSTEM_PROMPT, f"Question: {question}\n\nContext:\n{context[:4000]}")
+            st.session_state["llm_status"] = status
+            return text
 
         # Anthropic fallback
         r = requests.post(
@@ -1309,8 +1445,106 @@ def _llm_call(question: str, context: str, model: str = 'gemini-3.5-flash-lite')
             return ''.join(b.get('text', '') for b in r.json().get('content', []) if b.get('type') == 'text').strip() or None
         return None
     except Exception as e:
-        st.error(f"LLM Call Exception: {str(e)}")
+        st.session_state["llm_status"] = {"ok": False, "model": None, "reason": f"{type(e).__name__}: {e}"[:160]}
         return None
+
+
+GEMINI_DEFAULT_MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"]
+GEMINI_LABELS = {"gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite", "gemini-3.8-flash": "Gemini 3.8 Flash"}
+
+
+def _gemini_models() -> list[str]:
+    custom = _secret("GEMINI_MODEL")
+    return [m.strip() for m in custom.split(",") if m.strip()] if custom else GEMINI_DEFAULT_MODELS
+
+
+def _gemini_reason(r) -> str:
+    try:
+        msg = r.json().get("error", {}).get("message", "")
+    except Exception:
+        msg = ""
+    hint = {400: "bad request", 401: "API key rejected", 403: "API key not allowed for this project",
+            404: "model not found", 429: "rate limit or quota reached", 500: "Gemini server error",
+            503: "Gemini overloaded"}.get(r.status_code, "error")
+    return f"HTTP {r.status_code} ({hint}){': ' + msg[:120] if msg else ''}"
+
+
+def gemini_generate(system: str, user: str, json_mode: bool = False, deadline_s: float = 30.0,
+                    max_tokens: int = 2048) -> tuple[str | None, dict]:
+    """Calls Gemini with retries and an overall deadline. Never raises; returns (text or None, status)."""
+    import time
+    key = _secret("GEMINI_API_KEY")
+    if not key:
+        return None, {"ok": False, "model": None, "reason": "GEMINI_API_KEY not set"}
+    start, reasons = time.monotonic(), []
+    for model in _gemini_models():
+        gen_cfg = {"maxOutputTokens": max_tokens}
+        if "lite" not in model:
+            gen_cfg["thinkingConfig"] = {"thinkingLevel": "low"}  # keeps latency down on Flash
+        if json_mode:
+            gen_cfg["responseMimeType"] = "application/json"
+        payload = {"system_instruction": {"parts": [{"text": system}]},
+                   "contents": [{"role": "user", "parts": [{"text": user}]}],
+                   "generationConfig": gen_cfg}
+        for attempt in range(2):
+            remaining = deadline_s - (time.monotonic() - start)
+            if remaining < 3:
+                reasons.append("time budget used up")
+                return None, {"ok": False, "model": None, "reason": "; ".join(reasons)}
+            try:
+                r = requests.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+                    headers={"Content-Type": "application/json", "x-goog-api-key": key},
+                    json=payload, timeout=(5, min(20.0, remaining)))
+            except requests.exceptions.Timeout:
+                reasons.append(f"{model}: timed out")
+                break
+            except requests.exceptions.RequestException as exc:
+                reasons.append(f"{model}: {type(exc).__name__}")
+                break
+            if r.status_code == 200:
+                try:
+                    cand = (r.json().get("candidates") or [{}])[0]
+                    parts = cand.get("content", {}).get("parts", [])
+                    text = "".join(p.get("text", "") for p in parts if not p.get("thought")).strip()
+                except Exception:
+                    text, cand = "", {}
+                if text:
+                    return text, {"ok": True, "model": model, "reason": ""}
+                reasons.append(f"{model}: empty reply ({cand.get('finishReason', 'no text')})")
+                break
+            if r.status_code == 400 and "thinkingConfig" in gen_cfg:
+                gen_cfg.pop("thinkingConfig")  # older model versions reject thinking settings
+                continue
+            reasons.append(f"{model}: {_gemini_reason(r)}")
+            if r.status_code in (429, 500, 503) and attempt == 0:
+                time.sleep(1.5)
+                continue
+            break
+    return None, {"ok": False, "model": None, "reason": "; ".join(reasons) or "no models configured"}
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def translate_to_english(texts: tuple) -> dict:
+    """Batch-translate Hindi/Hinglish comments with Gemini. Returns {original: English}; {} if unavailable."""
+    if not texts or not _secret("GEMINI_API_KEY"):
+        return {}
+    import json
+    numbered = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
+    text, status = gemini_generate(
+        "You translate Indian investor comments (Hindi, Hinglish, or mixed) into plain, faithful English. "
+        "Keep amounts, app names and meaning; do not add commentary.",
+        f"Translate each numbered comment. Reply with a JSON array of strings in the same order.\n\n{numbered}",
+        json_mode=True, deadline_s=20.0, max_tokens=2048)
+    if not text:
+        return {}
+    try:
+        arr = json.loads(text)
+        return {t: str(e).strip() for t, e in zip(texts, arr) if str(e).strip()}
+    except Exception:
+        return {}
+
+
 def llm_enabled() -> bool:
     return bool(_secret('GEMINI_API_KEY') or _secret('ANTHROPIC_API_KEY'))
 
@@ -1337,7 +1571,9 @@ def respond(question: str, data: pd.DataFrame) -> tuple[str, str]:
                 tail = "\n\n**What investors actually said**\n\n" + "\n\n".join(quotes[:3])
             if web:
                 tail += f"\n\n[Background: {web['title']} on Wikipedia ↗]({web['url']})"
-            provider_label = "Google Gemini 3.8 Flash" if _secret('GEMINI_API_KEY') else "Claude"
+            _st = st.session_state.get("llm_status", {})
+            provider_label = (f"Google {GEMINI_LABELS.get(_st.get('model'), _st.get('model') or 'Gemini')}"
+                              if _secret('GEMINI_API_KEY') else "Claude")
             return llm + tail, f"{provider_label} + discovery data" + (" + Wikipedia" if web else "")
 
     source = {"data": "Review data synthesis", "solution": "Review data + product playbook",
@@ -1346,6 +1582,9 @@ def respond(question: str, data: pd.DataFrame) -> tuple[str, str]:
     if web:
         builtin += f"\n\n**Reference:** [{web['title']} on Wikipedia ↗]({web['url']}): {_esc(_excerpt(web['extract'], 260))}"
         source += " + Wikipedia"
+    if llm_enabled() and _secret('GEMINI_API_KEY'):
+        _reason = st.session_state.get("llm_status", {}).get("reason", "")
+        source += f" · built-in engine answered (Gemini unavailable: {_reason})" if _reason else ""
     return builtin, source
 
 
@@ -1371,14 +1610,13 @@ df_golden, golden_file, golden_raw = load_golden_set()
 
 c1, c2, c3, c4 = st.columns(4)
 _groww_n = int((df_master["Product"] == "Groww").sum())
+_bp = master_info.get("by_platform", {})
 c1.markdown(card("Total Reviews Extracted", f"{master_info['extracted']:,}",
-                 " + ".join(f"{n:,} {f.split('_')[0].split('.')[0]}" for f, n in master_info["rows"].items())
-                 + (f" · {len(df_master):,} unique" if master_info["duplicates"] else ""), True), unsafe_allow_html=True)
-c2.markdown(card("Groww vs Other", f"{_groww_n:,} | {len(df_master) - _groww_n:,}",
-                 "Groww | Other (unique reviews, by Product field)"), unsafe_allow_html=True)
-c3.markdown(card("AI Golden Set Count", f"{0 if df_golden is None else len(df_golden):,}",
-                 f"Benchmark rows from {golden_file}" if df_golden is not None else "golden_set.xlsx / .csv not found"),
+                 " · ".join(f"{int(_bp.get(p, 0)):,} {p}" for p in PLATFORMS), True), unsafe_allow_html=True)
+c2.markdown(card("Groww vs Other", f"{_groww_n:,} | {len(df_master) - _groww_n:,}", "Groww | Other"),
             unsafe_allow_html=True)
+c3.markdown(card("Validated Retention Dataset", f"{0 if df_golden is None else len(df_golden):,}",
+                 "Deep-dive validated real-world cancellation cases"), unsafe_allow_html=True)
 _years = df_master["Year"].dropna()
 c4.markdown(card("Longitudinal Span", f"{int(_years.min())} – {int(_years.max())}" if len(_years) else "—",
                  f"Coverage across {len(_years):,} dated reviews" if len(_years) else "No Year values found"),
@@ -1429,13 +1667,16 @@ def _rerun() -> None:
 def render_chat(data: pd.DataFrame, source_note: str = "") -> None:
     with chat_slot:
         if llm_enabled():
-            st.caption("🟢 **AI Enabled:** Google Gemini 3.8 Flash (Live Synthesis)")
+            _models = " → ".join(GEMINI_LABELS.get(m, m) for m in _gemini_models()) if _secret("GEMINI_API_KEY") else "Claude"
+            st.caption(f"🟢 **AI Enabled:** Google {_models} (Live Synthesis)" if _secret("GEMINI_API_KEY")
+                       else "🟢 **AI Enabled:** Claude (Live Synthesis)")
         st.session_state["chat_history"] = _normalize_history(st.session_state.get("chat_history", []))
 
-        pill_cols = st.columns(len(SUGGESTED_QUESTIONS))
-        for i, sq in enumerate(SUGGESTED_QUESTIONS):
-            if pill_cols[i].button(sq, key=f"suggest_{i}", use_container_width=True):
-                st.session_state["pending_question"] = sq
+        with _keyed_container("suggest_chips"):
+            pill_cols = st.columns(len(SUGGESTED_QUESTIONS))
+            for i, sq in enumerate(SUGGESTED_QUESTIONS):
+                pill_cols[i].button(sq, key=f"suggest_{i}", use_container_width=True,
+                                    on_click=_queue_question, args=(sq,))
 
         with st.form("ask_form", clear_on_submit=True, border=False) if _form_supports_border() else \
                 st.form("ask_form", clear_on_submit=True):
@@ -1443,7 +1684,9 @@ def render_chat(data: pd.DataFrame, source_note: str = "") -> None:
             typed = in_col.text_input(
                 "Your question", label_visibility="collapsed", key="ask_text",
                 placeholder="Ask a question about SIP drop-offs, cancellations, investor friction, or product fixes...")
-            asked = btn_col.form_submit_button("Ask", type="primary", use_container_width=True)
+            with btn_col:
+                with _keyed_container("ask_btn"):
+                    asked = st.form_submit_button("✨ Ask AI", type="primary", use_container_width=True)
 
         question = (typed.strip() if asked and typed and typed.strip() else None) \
             or st.session_state.pop("pending_question", None)
@@ -1478,6 +1721,20 @@ def render_chat(data: pd.DataFrame, source_note: str = "") -> None:
                         st.markdown(item.get("a") or item.get("answer", ""))
                         st.divider()
         st.write("")
+
+
+def _queue_question(q: str) -> None:
+    """Chip click: put the question in the input box and queue it for the engine on this run."""
+    st.session_state["pending_question"] = q
+    st.session_state["ask_text"] = q
+
+
+def _keyed_container(key: str):
+    """st.container(key=...) adds a .st-key-<key> CSS class (Streamlit >= 1.39); plain container otherwise."""
+    try:
+        return st.container(key=key)
+    except TypeError:
+        return st.container()
 
 
 def _form_supports_border() -> bool:
@@ -1579,10 +1836,9 @@ else:
         provenance = (f"AI golden benchmark ({bench_meta['source']}): {len(df_all)} hand-labelled public reviews and "
                       "comments. Every Source URL opens the original review, thread or video.")
         st.markdown(
-            f'<div class="notice" style="background:#E9FBF5;border-color:#9BE6CF;color:#0B5A45">'
-            f'<b>AI golden benchmark</b> · {len(df_all)} hand-labelled records from {bench_meta["source"]} · '
-            f'the full combined dataset ({len(df_master):,} unique reviews) is in the Export tab. '
-            f'Tenure is shown only where the author stated it.</div>', unsafe_allow_html=True)
+            '<div class="notice" style="background:#E9FBF5;border-color:#9BE6CF;color:#0B5A45">'
+            'Every “Open source ↗” link opens the original review, thread or video. Tenure is shown only where '
+            'the investor stated it.</div>', unsafe_allow_html=True)
     elif bench_is_real:
         when = (bench_meta.get("harvested_at") or "")[:10]
         provenance = (f"Real public benchmark: {len(df_all)} verbatim, PII-scrubbed Play Store reviews and Reddit "
@@ -1604,31 +1860,42 @@ else:
 # ---------------------------------------------------------------------------
 # Filters
 # ---------------------------------------------------------------------------
+chat_data = df_all  # Ask AI always answers from the validated set (it relies on its root-cause labels)
+st.markdown(f"<h3 style='color:{NAVY};margin-bottom:4px'>Discovery Filters</h3>", unsafe_allow_html=True)
+view_mode = st.radio("View Mode", [VIEW_FULL, VIEW_DEEP], index=0, horizontal=True, key="view_mode")
+if view_mode == VIEW_FULL and len(df_master):
+    df_all = build_full_view(df_master, df_golden)
+    st.caption("Full view: validated rows keep their labels; other rows carry a keyword auto-tagged Problem Theme "
+               "(unvalidated) and show “Not stated” / “Not assessed” where a field needs human review.")
 df_all = df_all.copy()
 # Columns actually present in the dataset drive what the table shows; any schema
 # column that is missing is added as empty so metrics, charts and export never crash.
-display_cols = [c for c in ec.COLUMNS if c in df_all.columns]
+display_cols = [c for c in ec.COLUMNS if c in df_all.columns] + [c for c in ("Year", "Label Source") if c in df_all.columns]
 for col in ec.COLUMNS:
     if col not in df_all.columns:
         df_all[col] = pd.NA
+df_all["Source Platform"] = df_all["Source Platform"].map(normalize_platform)
 df_all["Tenure Band"] = df_all["SIP Tenure (Months)"].map(ec.tenure_band)
 
 band_order = [b[0] for b in ec.TENURE_BANDS] + ["Not stated"]
-present = lambda col, order: [x for x in order if x in set(df_all[col])]  # noqa: E731
+present = lambda col, order: [x for x in order if x in set(df_all[col].dropna())]  # noqa: E731
 
-st.markdown(f"<h3 style='color:{NAVY};margin-bottom:4px'>Discovery Filters</h3>", unsafe_allow_html=True)
-f1, f2, f3, f4 = st.columns(4)
-sel_theme = f1.multiselect("Problem Theme", present("Problem Theme", ec.THEMES), placeholder="All 8 drivers", key="f_theme")
+f0, f1, f2, f3, f4 = st.columns(5)
+sel_src = f0.multiselect("Source", present("Source Platform", PLATFORMS), placeholder="All sources", key="f_src")
+sel_theme = f1.multiselect("Problem Theme", present("Problem Theme", ec.THEMES + ["Unclassified"]),
+                           placeholder="All 8 drivers", key="f_theme")
 sel_band = f2.multiselect("SIP Tenure", present("Tenure Band", band_order), placeholder="All tenures", key="f_band")
 _stage_opts = present("SIP Stage", ec.STAGES + ["Unknown Stage"])
 _stage_opts += sorted(str(x) for x in set(df_all["SIP Stage"].dropna()) if x not in _stage_opts)
 sel_stage = f3.multiselect("SIP Stage", _stage_opts, placeholder="All stages", key="f_stage")
-sel_prev = f4.multiselect("Churn Preventability", present("Churn Preventability", ec.PREVENTABILITY_LEVELS),
+sel_prev = f4.multiselect("Churn Preventability", present("Churn Preventability", ec.PREVENTABILITY_LEVELS + ["Not assessed"]),
                           placeholder="All levels", key="f_prev")
 
-render_chat(df_all)
+render_chat(chat_data)
 
 df = df_all
+if sel_src:
+    df = df[df["Source Platform"].isin(sel_src)]
 if sel_theme:
     df = df[df["Problem Theme"].isin(sel_theme)]
 if sel_band:
@@ -1637,6 +1904,58 @@ if sel_stage:
     df = df[df["SIP Stage"].isin(sel_stage)]
 if sel_prev:
     df = df[df["Churn Preventability"].isin(sel_prev)]
+
+
+def render_evidence(view: pd.DataFrame, k: int = 6) -> None:
+    """Representative quote cards from the rows currently in view, with AI translations for Hindi/Hinglish."""
+    filtered = bool(sel_src or sel_theme or sel_band or sel_stage or sel_prev)
+    st.markdown(f"<h4 style='color:{NAVY};margin:18px 0 2px'>Evidence Highlights</h4>", unsafe_allow_html=True)
+    st.caption(("Representative comments for the current filters" if filtered else
+                "Representative comments from the active view") + f" · {len(view):,} rows in view")
+    pool = view.copy()
+    pool["_k"] = pool["Original Comment"].map(lambda t: " ".join(str(t).split()).lower())
+    pool = pool[pool["_k"].str.len().between(40, 900)].drop_duplicates("_k")
+    if pool.empty:
+        st.info("No comments to highlight for this selection.")
+        return
+    val = (pool["Label Source"] == "Validated") if "Label Source" in pool.columns else pd.Series(True, index=pool.index)
+    pool["_score"] = (val.astype(int) * 3 + pool["Problem Theme"].isin(ec.THEMES).astype(int)
+                      + pool["Product"].eq("Groww").astype(int) * 0.5 + pool["_k"].str.len().clip(upper=400) / 400)
+    ranked = pool.sort_values("_score", ascending=False)
+    chosen, per_src, per_theme = [], Counter(), Counter()
+    for cap in (2, k):  # first pass keeps sources and themes varied; second fills any gaps
+        for idx, r in ranked.iterrows():
+            if len(chosen) == k:
+                break
+            if idx in chosen or per_src[r["Source Platform"]] >= cap or per_theme[r["Problem Theme"]] >= cap:
+                continue
+            chosen.append(idx)
+            per_src[r["Source Platform"]] += 1
+            per_theme[r["Problem Theme"]] += 1
+    picks = ranked.loc[chosen]
+    glosses = load_golden_glosses()
+    need = tuple(c for c in picks["Original Comment"] if needs_translation(c) and _text_key(c, "")[0] not in glosses)
+    ai = translate_to_english(need) if need else {}
+    cols = st.columns(3)
+    for i, (_, r) in enumerate(picks.iterrows()):
+        comment = str(r["Original Comment"])
+        year = "" if pd.isna(r["Year"]) else f" · {int(r['Year'])}"
+        url = html.escape(str(r["Source URL"]), quote=True)
+        meta = (f"<b>R{i + 1}</b> · {html.escape(str(r['Source Platform']))} · {html.escape(str(r['Product']))}{year} · "
+                f"<a href=\"{url}\" target=\"_blank\">Open source ↗</a>")
+        trans = glosses.get(_text_key(comment, "")[0]) or ai.get(comment)
+        trans_html = (f'<div class="ev-trans"><span class="ai-badge">🌐 Translated to English by AI</span><br>'
+                      f'{html.escape(trans)}</div>') if (trans and needs_translation(comment)) else ""
+        tags = " · ".join(html.escape(str(r[c])) for c in ("Problem Theme", "SIP Stage")
+                          if pd.notna(r[c]) and str(r[c]) not in ("Not stated", "Unclassified"))
+        cols[i % 3].markdown(
+            f'<div class="ev-card"><div class="ev-meta">{meta}</div>'
+            f'<div class="ev-quote">“{html.escape(_excerpt(comment, 420))}”</div>{trans_html}'
+            f'{f"<div class=ev-tags>{tags}</div>" if tags else ""}</div>', unsafe_allow_html=True)
+    if any(needs_translation(c) for c in picks["Original Comment"]) and not (glosses or ai):
+        st.caption("Add GEMINI_API_KEY (or golden_set.xlsx with its Reviewer Notes sheet) to show English translations "
+                   "for Hindi/Hinglish comments.")
+
 
 PLOT_LAYOUT = dict(
     font=dict(family="Inter, Arial, sans-serif", color=NAVY, size=13),
@@ -1651,14 +1970,17 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
     k1.markdown(card("Records in view", f"{summary['n']:,}", f"of {len(df_all):,} analysed"), unsafe_allow_html=True)
     k2.markdown(card("Churn in M10–14 cliff", f"{summary['cliff_share']:.0%}",
                      f"{summary['cliff']} of {summary['known_tenure']} with stated tenure", True), unsafe_allow_html=True)
-    k3.markdown(card("Addressable by Product & Nudges", f"{summary['addressable_share']:.0%}",
-                     "High – Product/UX + High – FinTech Nudge", True), unsafe_allow_html=True)
+    _assessed = df[df["Churn Preventability"].isin(ec.PREVENTABILITY_LEVELS)]
+    _addr = _assessed["Churn Preventability"].isin(ec.ADDRESSABLE_LEVELS).mean() if len(_assessed) else 0
+    k3.markdown(card("Addressable by Product & Nudges", f"{_addr:.0%}",
+                     f"of {len(_assessed):,} assessed cases · Product/UX + FinTech nudge", True), unsafe_allow_html=True)
     k4.markdown(card("Top churn driver", summary["top_theme"],
                      f"{summary['themes'].iloc[0]['Share']:.0%} of records in view"), unsafe_allow_html=True)
     k5.markdown(card("Records with stated tenure", f"{summary['known_tenure']:,}",
                      "Used for the drop-off cliff chart"), unsafe_allow_html=True)
     st.write("")
 
+    render_evidence(df)
     tab_dash, tab_table, tab_export = st.tabs(["📊 Evaluator Dashboard", "🔎 Discovery Table", "⬇️ Export Workbook"])
 
     with tab_dash:
@@ -1805,9 +2127,9 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
             st.caption(f"wb + Reddit + YouTube · {len(df_master):,} unique rows · 13-column schema")
         with ex2:
             st.download_button(
-                "🏅 Download AI Golden Benchmark Set (.xlsx)",
+                "🏅 Download Validated Retention Dataset (.xlsx)",
                 data=golden_raw or (dataset_to_xlsx(df_golden, "Golden Set") if df_golden is not None else b""),
-                file_name="golden_set.xlsx",
+                file_name="validated_retention_dataset.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 disabled=df_golden is None, key="dl_golden", use_container_width=True)
             st.caption(f"{0 if df_golden is None else len(df_golden)} benchmark rows" +
@@ -1815,9 +2137,10 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
         st.divider()
         st.markdown("#### Discovery Workbook")
         st.markdown(
-            "- **Sheet 1 · Discovery Dataset** — all records, navy headers, auto-filters, frozen panes, wrapped comments, clickable source links")
+            "- **Sheet 1 · Combined Discovery Dataset** — All normalized user reviews with clickable source links")
         scope = st.radio("Rows to export", ["Full dataset", "Current filtered view"], horizontal=True, key="export_scope")
-        export_df = df_all[ec.COLUMNS] if scope == "Full dataset" else df[ec.COLUMNS]
+        _ecols = ec.COLUMNS + [c for c in ("Year", "Label Source") if c in df_all.columns]
+        export_df = df_all[_ecols] if scope == "Full dataset" else df[_ecols]
         with st.spinner("Building workbook…"):
             xlsx = get_workbook(export_df.reset_index(drop=True), provenance)
         st.download_button(
@@ -1830,8 +2153,11 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
         )
 
 
-summary = ec.summarize(df)
-if summary["n"] == 0:
+summary = ec.summarize(df) if df["Problem Theme"].isin(ec.THEMES).any() else {"n": 0}
+if summary["n"] == 0 and len(df):
+    st.info("None of the rows in view have a Problem Theme yet, so the dashboard charts are hidden.")
+    render_evidence(df)
+elif summary["n"] == 0:
     st.warning("No records match the current filters. Widen the filters to see the dashboard.")
 else:
     render_dashboard(df, summary)
