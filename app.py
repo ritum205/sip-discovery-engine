@@ -1126,14 +1126,14 @@ Rules:
 - Never recommend specific AMC schemes, fund names, or individual stocks.
 - Never give direct investment advice (e.g., do not say "you must buy this").
 - Keep answers structured with crisp markdown, clean sub-headings, and clear bullet points."""
-
 def _llm_call(question: str, context: str, model: str = 'gemini-3.8-flash') -> str | None:
     key = _secret('GEMINI_API_KEY') or _secret('ANTHROPIC_API_KEY')
     if not key:
         return None
     try:
         if _secret('GEMINI_API_KEY'):
-            url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={key}'
+            import time
+            models_to_try = [model, 'gemini-2.5-flash'] if model != 'gemini-2.5-flash' else [model]
             headers = {'Content-Type': 'application/json'}
             payload = {
                 'system_instruction': {
@@ -1144,13 +1144,22 @@ def _llm_call(question: str, context: str, model: str = 'gemini-3.8-flash') -> s
                     'parts': [{'text': f"Question: {question}\n\nBackground Context:\n{context[:3000]}"}]
                 }]
             }
-            r = requests.post(url, headers=headers, json=payload, timeout=30)
-            if r.status_code == 200:
-                data = r.json()
-                return data['candidates'][0]['content']['parts'][0]['text'].strip()
-            else:
-                st.error(f"Gemini API Error ({r.status_code}): {r.text}")
-                return None
+
+            for m in models_to_try:
+                url = f'https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent?key={key}'
+                for attempt in range(2):
+                    r = requests.post(url, headers=headers, json=payload, timeout=30)
+                    if r.status_code == 200:
+                        data = r.json()
+                        return data['candidates'][0]['content']['parts'][0]['text'].strip()
+                    elif r.status_code in (429, 503):
+                        time.sleep(1.5 * (attempt + 1))
+                        continue
+                    else:
+                        break
+
+            st.warning("Gemini servers are currently experiencing high traffic. Please try asking again in a few moments.")
+            return None
 
         # Anthropic fallback
         r = requests.post(
