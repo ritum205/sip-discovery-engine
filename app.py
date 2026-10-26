@@ -68,12 +68,23 @@ st.markdown(
   .pill {{ display: inline-block; background: rgba(0,208,156,0.18); color: {EMERALD};
           border: 1px solid rgba(0,208,156,0.5); border-radius: 999px; padding: 2px 12px;
           font-size: 0.78rem; font-weight: 600; margin-bottom: 10px; letter-spacing: .3px; }}
-  .card {{ min-height: 140px; display: flex; flex-direction: column; justify-content: space-between;
-           box-sizing: border-box; background: #fff; border: 1px solid #E3E8EF; border-radius: 14px; padding: 16px 18px;
-          height: 100%; box-shadow: 0 1px 2px rgba(27,54,93,0.04); }}
-  .card .label {{ color: #5A6B82; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .6px; font-weight: 600; }}
-  .card .value {{ color: {NAVY}; font-size: 1.75rem; font-weight: 700; margin-top: 4px; line-height: 1.15; }}
-  .card .hint {{ color: #5A6B82; font-size: 0.82rem; margin-top: 4px; }}
+  /* Uniform KPI cards: identical fixed height; label row reserves two lines so every value sits on the same baseline */
+  .card {{ height: 168px; min-height: 168px; display: flex; flex-direction: column; justify-content: flex-start;
+           box-sizing: border-box; background: #fff; border: 1px solid #E3E8EF; border-radius: 12px; padding: 16px 20px;
+           box-shadow: 0 1px 3px rgba(0,0,0,0.04); overflow: hidden; margin-bottom: 8px; }}
+  .card .label {{ color: #5A6B82; font-size: 0.74rem; text-transform: uppercase; letter-spacing: .6px; font-weight: 600;
+                 line-height: 1.3; min-height: 2.6em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+                 overflow: hidden; }}
+  .card .value {{ color: {NAVY}; font-size: 1.7rem; font-weight: 700; line-height: 1.15; margin-top: 2px;
+                 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }}
+  .card .value.sm {{ font-size: 1.15rem; line-height: 1.25; }}
+  .card .hint {{ color: #5A6B82; font-size: 0.8rem; line-height: 1.35; margin-top: auto;
+                display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }}
+  div[data-testid="stMetric"], div[data-testid="metric-container"] {{
+      background-color: #ffffff !important; border: 1px solid #e5e7eb !important; border-radius: 12px !important;
+      padding: 16px 20px !important; min-height: 130px !important; height: 130px !important; display: flex !important;
+      flex-direction: column !important; justify-content: space-between !important;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important; }}
   .card.accent {{ border-left: 5px solid {EMERALD}; }}
   .step {{ background: {LIGHT}; border-radius: 12px; padding: 14px 16px; height: 100%; }}
   .step b {{ color: {NAVY}; }}
@@ -124,8 +135,9 @@ st.markdown(
 
 
 def card(label: str, value: str, hint: str = "", accent: bool = False) -> str:
-    return (f'<div class="card{" accent" if accent else ""}"><div class="label">{label}</div>'
-            f'<div class="value">{value}</div><div class="hint">{hint}</div></div>')
+    small = " sm" if len(str(value)) > 14 else ""  # long text values (e.g. a theme name) use a smaller size
+    return (f'<div class="card{" accent" if accent else ""}" title="{html.escape(str(hint), quote=True)}">'
+            f'<div class="label">{label}</div><div class="value{small}">{value}</div><div class="hint">{hint}</div></div>')
 
 
 def stretch(fn, *args, **kwargs):
@@ -154,7 +166,7 @@ MASTER_SCHEMA = ["Product", "Source Platform", "Source URL", "Original Comment",
                  "Churn Preventability", "Year"]
 SOURCE_FILES = ["wb.xlsx", "reddit_sip_reviews.csv", "youtube_sip_comments.csv"]
 PLATFORMS = ["Play Store", "Reddit", "YouTube"]
-VIEW_FULL, VIEW_DEEP = "Full Discovery Dataset (All Sources)", "Validated Retention Deep-Dive"
+VIEW_FULL, VIEW_DEEP = "Full Discovery Dataset (All Sources)", "Validated Insights Deep-Dive"
 # wb.xlsx repeats each of its 32 comments ~7 times. Counts follow the raw extract by default;
 # set True to drop exact duplicate rows (same comment + URL) from the combined dataset.
 DROP_DUPLICATE_ROWS = False
@@ -177,6 +189,44 @@ def auto_tag_theme(text: str) -> str:
     return theme if best >= 2 else "Unclassified"
 
 
+_EMOTION_RULES = [  # first match wins; applied only to auto-tagged (unvalidated) rows
+    ("Fear of Penalty", r"\b(penalt\w*|bounce\w*|charges?|fine|lien|fee)\b"),
+    ("Panic/Fear", r"\b(scared|panic\w*|fear|afraid|crash\w*|dar)\b"),
+    ("Distrust", r"\b(scam\w*|fraud|cheat\w*|trust|hacked|without (my )?permission)\b"),
+    ("Anxiety/Stress", r"\b(worried|tension|urgent|stress\w*|help|please|plz|pls|😢|😭)"),
+    ("Confusion", r"\b(kaise|kese|how (do|to|can)|kya|confus\w*|understand|\?)"),
+    ("Frustration", r"\b(again|still|not working|nahi ho|nhi ho|useless|worst|frustrat\w*|fed up)\b"),
+    ("Disillusionment", r"\b(returns?|loss|negative|fd|not convincing)\b"),
+]
+_THEME_EMOTION = {"Bank & Auto-Debit Friction": "Frustration", "Platform Bugs": "Frustration",
+                  "Directionless Onboarding": "Confusion", "Liquidity Shortage": "Anxiety/Stress",
+                  "Market Correction Panic": "Panic/Fear", "Disappointment Valley": "Disillusionment",
+                  "Social Influence": "FOMO", "Same-Category Overlap": "Confusion"}
+_THEME_PREVENT = {"Bank & Auto-Debit Friction": ec.PREVENT_UX, "Platform Bugs": ec.PREVENT_UX,
+                  "Directionless Onboarding": ec.PREVENT_EDU, "Liquidity Shortage": ec.PREVENT_UX,
+                  "Market Correction Panic": ec.PREVENT_NUDGE, "Disappointment Valley": ec.PREVENT_NUDGE,
+                  "Social Influence": ec.PREVENT_EDU, "Same-Category Overlap": ec.PREVENT_UX}
+
+
+def infer_emotion(text: str, theme: str) -> str:
+    """Keyword-inferred emotional trigger for auto-tagged rows (falls back to the theme's typical emotion)."""
+    t = str(text).lower()
+    for label, rx in _EMOTION_RULES:
+        if re.search(rx, t):
+            return label
+    return _THEME_EMOTION.get(theme, "Anxiety / Frustration")
+
+
+def infer_preventability(text: str, theme: str) -> str:
+    """Keyword-inferred preventability for auto-tagged rows."""
+    t = str(text).lower()
+    if re.search(r"\b(lost (my )?job|laid off|medical|hospital|wedding|nri|abroad|out of india)\b", t):
+        return ec.PREVENT_LOW
+    if theme == "Bank & Auto-Debit Friction" and re.search(r"\b(balance|salary|penalt\w*|bounce\w*|reminder)\b", t):
+        return ec.PREVENT_NUDGE
+    return _THEME_PREVENT.get(theme, ec.NOT_ASSESSED)
+
+
 def needs_translation(text: str) -> bool:
     """Devanagari script or romanised Hindi (Hinglish)."""
     t = str(text)
@@ -190,6 +240,12 @@ def normalize_platform(value) -> str:
     if "youtube" in v or "youtu.be" in v:
         return "YouTube"
     return "Play Store"  # Google Play Store and Apple App Store reviews
+
+
+def _match_key(comment, url) -> tuple:
+    """Encoding-proof row key: URL + the first 80 ASCII letters/digits of the comment. Survives files
+    re-saved with garbled characters (₹, Hindi, dashes) because only ASCII alphanumerics are compared."""
+    return (str(url).strip(), re.sub(r"[^a-z0-9]", "", str(comment).lower())[:80])
 
 
 def _text_key(comment, url) -> tuple:
@@ -219,7 +275,7 @@ def _clean_schema(df: pd.DataFrame) -> pd.DataFrame:
                      for p, c in zip(df["Product"], df["Original Comment"])]
     df["Source Platform"] = df["Source Platform"].map(normalize_platform)
     df["Year"] = pd.to_numeric(df["Year"], errors="coerce").astype("Int64")
-    df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"], errors="coerce").astype("Int64")
+    df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"].map(ec.parse_tenure), errors="coerce").astype("Int64")
     return df
 
 
@@ -278,7 +334,12 @@ def load_golden_set():
     df["Product"] = ["Groww" if ("groww" in str(p).lower() or "groww" in str(c).lower()) else "Other"
                      for p, c in zip(df["Product"], df["Original Comment"])]
     df["Year"] = pd.to_numeric(df["Year"], errors="coerce").astype("Int64")
-    df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"], errors="coerce").astype("Int64")
+    df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"].map(ec.parse_tenure), errors="coerce").astype("Int64")
+    # Normalise label spellings (dash / encoding / case variants) so filters, charts and KPIs match
+    df["Churn Preventability"] = df["Churn Preventability"].map(ec.normalize_preventability)
+    df["Problem Theme"] = df["Problem Theme"].map(lambda v: ec.normalize_theme(v) if pd.notna(v) else v)
+    df["Investor Emotional Trigger"] = df["Investor Emotional Trigger"].map(
+        lambda v: str(v).strip() if pd.notna(v) and str(v).strip().lower() not in ec.MISSING_LABELS else pd.NA)
     return df, name, raw
 
 
@@ -311,9 +372,9 @@ def build_full_view(master: pd.DataFrame, golden: pd.DataFrame | None) -> pd.Dat
         df[analytic] = pd.NA
     df["Label Source"] = "Auto-tagged (keyword, unvalidated)"
     if golden is not None:
-        lookup = {_text_key(c, u): i for i, (c, u) in enumerate(zip(golden["Original Comment"], golden["Source URL"]))}
+        lookup = {_match_key(c, u): i for i, (c, u) in enumerate(zip(golden["Original Comment"], golden["Source URL"]))}
         for idx, (c, u) in enumerate(zip(df["Original Comment"], df["Source URL"])):
-            gi = lookup.get(_text_key(c, u))
+            gi = lookup.get(_match_key(c, u))
             if gi is not None:
                 for col in analytic:
                     df.at[idx, col] = golden.iloc[gi][col]
@@ -321,9 +382,15 @@ def build_full_view(master: pd.DataFrame, golden: pd.DataFrame | None) -> pd.Dat
     unl = df["Label Source"] != "Validated"
     df.loc[unl, "Problem Theme"] = df.loc[unl, "Original Comment"].map(auto_tag_theme)
     df.loc[df["Problem Theme"] == "Unclassified", "Label Source"] = "Unclassified"
+    auto = df["Label Source"] == "Auto-tagged (keyword, unvalidated)"
+    df.loc[auto, "Investor Emotional Trigger"] = [infer_emotion(c, t) for c, t in
+                                                  zip(df.loc[auto, "Original Comment"], df.loc[auto, "Problem Theme"])]
+    df.loc[auto, "Churn Preventability"] = [infer_preventability(c, t) for c, t in
+                                            zip(df.loc[auto, "Original Comment"], df.loc[auto, "Problem Theme"])]
     df["SIP Stage"] = df["SIP Stage"].fillna("Not stated")
     df["Churn Preventability"] = df["Churn Preventability"].fillna("Not assessed")
-    df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"], errors="coerce").astype("Int64")
+    df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"].map(ec.parse_tenure), errors="coerce").astype("Int64")
+    df["Churn Preventability"] = df["Churn Preventability"].map(ec.normalize_preventability)
     kb = ec.THEME_KB
     df["Recommended Groww Intervention"] = df["Problem Theme"].map(lambda t: kb.get(t, {}).get("intervention", pd.NA))
     df["Target North-Star Metric Impact"] = df["Problem Theme"].map(lambda t: kb.get(t, {}).get("nsm", pd.NA))
@@ -1086,7 +1153,7 @@ def _data_answer(ctx: dict, total: int) -> list[str]:
     else:
         out.append(f"**Short answer:** **{n}** of {total} records ({_pct(n, total)}) relate to "
                    f"**{', '.join(ctx['scope'])}**. The dominant driver here is **{top_theme}**, and "
-                   f"{_pct(addressable, n)} of these cases look addressable through product/UX fixes or compliant nudges.")
+                   f"{_pct(addressable, n)} of these cases look addressable through product fixes, nudges or education.")
     out += [f"_{note}_" for note in ctx["notes"]]
 
     rc = subset["Problem Root Cause"].value_counts().head(3)
@@ -1283,7 +1350,7 @@ def _solution_answer(data: pd.DataFrame, ctx: dict) -> list[str]:
     counts = base["Problem Theme"].value_counts().head(4)
     out = ["**Short answer:** focus on the drivers that are both large and addressable. "
            f"Across all {total} records, {_pct(int(data['Churn Preventability'].isin(ec.ADDRESSABLE_LEVELS).sum()), total)} "
-           "of drop-offs look addressable through product/UX fixes or compliant nudges."]
+           "of drop-offs look addressable through product fixes, nudges or education."]
     lines = ["**Where to act, by size of problem**"]
     for i, (theme, c) in enumerate(counts.items(), start=1):
         kb = ec.THEME_KB[theme]
@@ -1613,10 +1680,10 @@ _groww_n = int((df_master["Product"] == "Groww").sum())
 _bp = master_info.get("by_platform", {})
 c1.markdown(card("Total Reviews Extracted", f"{master_info['extracted']:,}",
                  " · ".join(f"{int(_bp.get(p, 0)):,} {p}" for p in PLATFORMS), True), unsafe_allow_html=True)
-c2.markdown(card("Groww vs Other", f"{_groww_n:,} | {len(df_master) - _groww_n:,}", "Groww | Other"),
+c2.markdown(card("Product / Platform", f"{_groww_n:,} | {len(df_master) - _groww_n:,}", "Groww | Other"),
             unsafe_allow_html=True)
-c3.markdown(card("Validated Retention Dataset", f"{0 if df_golden is None else len(df_golden):,}",
-                 "Deep-dive validated real-world cancellation cases"), unsafe_allow_html=True)
+c3.markdown(card("Validated Insights Dataset", f"{0 if df_golden is None else len(df_golden):,}",
+                 "Deep-dive validated cancellation cases"), unsafe_allow_html=True)
 _years = df_master["Year"].dropna()
 c4.markdown(card("Longitudinal Span", f"{int(_years.min())} – {int(_years.max())}" if len(_years) else "—",
                  f"Coverage across {len(_years):,} dated reviews" if len(_years) else "No Year values found"),
@@ -1862,11 +1929,11 @@ else:
 # ---------------------------------------------------------------------------
 chat_data = df_all  # Ask AI always answers from the validated set (it relies on its root-cause labels)
 st.markdown(f"<h3 style='color:{NAVY};margin-bottom:4px'>Discovery Filters</h3>", unsafe_allow_html=True)
-view_mode = st.radio("View Mode", [VIEW_FULL, VIEW_DEEP], index=0, horizontal=True, key="view_mode")
+view_mode = st.radio("View Mode", [VIEW_FULL, VIEW_DEEP], index=1, horizontal=True, key="view_mode")
 if view_mode == VIEW_FULL and len(df_master):
     df_all = build_full_view(df_master, df_golden)
-    st.caption("Full view: validated rows keep their labels; other rows carry a keyword auto-tagged Problem Theme "
-               "(unvalidated) and show “Not stated” / “Not assessed” where a field needs human review.")
+    st.caption("Full view: validated rows keep their labels. Other rows are auto-tagged from keywords (theme, emotion and "
+               "preventability are inferred, not validated); see the Label Source column. Tenure is only shown where stated.")
 df_all = df_all.copy()
 # Columns actually present in the dataset drive what the table shows; any schema
 # column that is missing is added as empty so metrics, charts and export never crash.
@@ -1875,6 +1942,9 @@ for col in ec.COLUMNS:
     if col not in df_all.columns:
         df_all[col] = pd.NA
 df_all["Source Platform"] = df_all["Source Platform"].map(normalize_platform)
+df_all["Churn Preventability"] = df_all["Churn Preventability"].map(ec.normalize_preventability)
+df_all["Problem Theme"] = df_all["Problem Theme"].map(lambda v: ec.normalize_theme(v) if pd.notna(v) else v)
+df_all["SIP Tenure (Months)"] = pd.to_numeric(df_all["SIP Tenure (Months)"].map(ec.parse_tenure), errors="coerce").astype("Int64")
 df_all["Tenure Band"] = df_all["SIP Tenure (Months)"].map(ec.tenure_band)
 
 band_order = [b[0] for b in ec.TENURE_BANDS] + ["Not stated"]
@@ -1888,7 +1958,9 @@ sel_band = f2.multiselect("SIP Tenure", present("Tenure Band", band_order), plac
 _stage_opts = present("SIP Stage", ec.STAGES + ["Unknown Stage"])
 _stage_opts += sorted(str(x) for x in set(df_all["SIP Stage"].dropna()) if x not in _stage_opts)
 sel_stage = f3.multiselect("SIP Stage", _stage_opts, placeholder="All stages", key="f_stage")
-sel_prev = f4.multiselect("Churn Preventability", present("Churn Preventability", ec.PREVENTABILITY_LEVELS + ["Not assessed"]),
+_prev_opts = present("Churn Preventability", ec.PREVENTABILITY_LEVELS)
+_prev_opts += sorted(str(x) for x in set(df_all["Churn Preventability"].dropna()) if str(x) not in _prev_opts)
+sel_prev = f4.multiselect("Churn Preventability", _prev_opts,
                           placeholder="All levels", key="f_prev")
 
 render_chat(chat_data)
@@ -1953,8 +2025,7 @@ def render_evidence(view: pd.DataFrame, k: int = 6) -> None:
             f'<div class="ev-quote">“{html.escape(_excerpt(comment, 420))}”</div>{trans_html}'
             f'{f"<div class=ev-tags>{tags}</div>" if tags else ""}</div>', unsafe_allow_html=True)
     if any(needs_translation(c) for c in picks["Original Comment"]) and not (glosses or ai):
-        st.caption("Add GEMINI_API_KEY (or golden_set.xlsx with its Reviewer Notes sheet) to show English translations "
-                   "for Hindi/Hinglish comments.")
+        st.caption("English translations for Hindi/Hinglish comments appear when the Gemini API key is configured.")
 
 
 PLOT_LAYOUT = dict(
@@ -1968,12 +2039,19 @@ PLOT_LAYOUT = dict(
 def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.markdown(card("Records in view", f"{summary['n']:,}", f"of {len(df_all):,} analysed"), unsafe_allow_html=True)
-    k2.markdown(card("Churn in M10–14 cliff", f"{summary['cliff_share']:.0%}",
-                     f"{summary['cliff']} of {summary['known_tenure']} with stated tenure", True), unsafe_allow_html=True)
-    _assessed = df[df["Churn Preventability"].isin(ec.PREVENTABILITY_LEVELS)]
-    _addr = _assessed["Churn Preventability"].isin(ec.ADDRESSABLE_LEVELS).mean() if len(_assessed) else 0
+    if summary["known_tenure"] == 0:
+        k2.markdown(card("Churn in M10–14 cliff", "—", "No rows in view state a tenure", True), unsafe_allow_html=True)
+    elif summary["cliff"] == 0:
+        k2.markdown(card("Churn in M10–14 cliff", "0%",
+                         f"None of the {summary['known_tenure']} stated tenures fall in months 10–14", True),
+                    unsafe_allow_html=True)
+    else:
+        k2.markdown(card("Churn in M10–14 cliff", f"{summary['cliff_share']:.0%}",
+                         f"{summary['cliff']} of {summary['known_tenure']} with stated tenure", True), unsafe_allow_html=True)
+    _assessed = df[df["Churn Preventability"].map(ec.normalize_preventability).isin(ec.PREVENTABILITY_LEVELS)]
+    _addr = _assessed["Churn Preventability"].map(ec.is_addressable).mean() if len(_assessed) else 0
     k3.markdown(card("Addressable by Product & Nudges", f"{_addr:.0%}",
-                     f"of {len(_assessed):,} assessed cases · Product/UX + FinTech nudge", True), unsafe_allow_html=True)
+                     f"High or Medium preventability · {len(_assessed):,} assessed cases", True), unsafe_allow_html=True)
     k4.markdown(card("Top churn driver", summary["top_theme"],
                      f"{summary['themes'].iloc[0]['Share']:.0%} of records in view"), unsafe_allow_html=True)
     k5.markdown(card("Records with stated tenure", f"{summary['known_tenure']:,}",
@@ -1996,7 +2074,9 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
                 x=counts.index, y=counts.values, marker_color=colors,
                 hovertemplate="Month %{x}<br>%{y} churn records<extra></extra>"))
             fig1.add_vrect(x0=9.5, x1=14.5, fillcolor=EMERALD, opacity=0.08, line_width=0,
-                           annotation_text=f"Drop-off Cliff · {summary['cliff_share']:.0%} of churn",
+                           annotation_text=(f"Drop-off Cliff · {summary['cliff_share']:.0%} of stated-tenure churn"
+                                            if summary["cliff"] else
+                                            f"Drop-off Cliff · none of {summary['known_tenure']} stated tenures"),
                            annotation_position="top left", annotation_font_color=NAVY)
             fig1.update_layout(**PLOT_LAYOUT, height=380, bargap=0.15,
                                title=dict(text="<b>Chart 1 · The Month 10–14 Drop-off Cliff</b><br>"
@@ -2037,17 +2117,22 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
         p_left, p_right = st.columns([2, 3])
         prev_counts = df["Churn Preventability"].value_counts().reindex(ec.PREVENTABILITY_LEVELS, fill_value=0)
         prev_counts = prev_counts[prev_counts > 0]
+        _assessed_share = (df["Churn Preventability"].map(ec.is_addressable).sum()
+                           / max(int(prev_counts.sum()), 1))
         with p_left:
-            fig3 = go.Figure(go.Pie(
-                labels=prev_counts.index, values=prev_counts.values, hole=0.62, sort=False,
-                marker=dict(colors=[PREVENT_COLORS[l] for l in prev_counts.index], line=dict(color="#FFFFFF", width=2)),
-                textinfo="percent", hovertemplate="%{label}<br>%{value} records (%{percent})<extra></extra>"))
-            fig3.add_annotation(text=f"<b>{summary['addressable_share']:.0%}</b><br><span style='font-size:12px'>addressable</span>",
-                                showarrow=False, font=dict(size=26, color=NAVY))
-            fig3.update_layout(**PLOT_LAYOUT, height=400, showlegend=True,
-                               legend=dict(orientation="h", y=-0.12, font=dict(size=11)),
-                               title=dict(text="<b>Chart 3 · Churn Preventability</b>"))
-            stretch(st.plotly_chart, fig3, config={"displayModeBar": False})
+            if prev_counts.empty:
+                st.info("No rows in view have a preventability assessment yet.")
+            else:
+                fig3 = go.Figure(go.Pie(
+                    labels=prev_counts.index, values=prev_counts.values, hole=0.62, sort=False,
+                    marker=dict(colors=[PREVENT_COLORS[l] for l in prev_counts.index], line=dict(color="#FFFFFF", width=2)),
+                    textinfo="percent", hovertemplate="%{label}<br>%{value} records (%{percent})<extra></extra>"))
+                fig3.add_annotation(text=f"<b>{_assessed_share:.0%}</b><br><span style='font-size:12px'>addressable</span>",
+                                    showarrow=False, font=dict(size=26, color=NAVY))
+                fig3.update_layout(**PLOT_LAYOUT, height=400, showlegend=True,
+                                   legend=dict(orientation="h", y=-0.12, font=dict(size=11)),
+                                   title=dict(text="<b>Chart 3 · Churn Preventability</b>"))
+                stretch(st.plotly_chart, fig3, config={"displayModeBar": False})
         with p_right:
             cross = df.groupby(["Problem Theme", "Churn Preventability"]).size().reset_index(name="Records")
             fig4 = px.bar(cross, x="Records", y="Problem Theme", color="Churn Preventability", orientation="h",
@@ -2090,7 +2175,7 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
         st.markdown(
             f"**Read-out:** {summary['cliff_share']:.0%} of tenure-stated churn in view falls in months 10–14; "
             f"**{summary['top_theme']}** is the largest driver; and {summary['addressable_share']:.0%} of records are "
-            f"addressable through Product/UX fixes or compliant FinTech nudges ({verdict} the 75% hypothesis).")
+            f"addressable through product fixes, nudges or education ({verdict} the 75% hypothesis).")
 
     with tab_table:
         keyword = st.text_input("🔍 Search Reviews by Keyword:", placeholder="e.g., cancel, pause, bounce, xirr, ...",
@@ -2124,20 +2209,15 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
                 file_name=f"Groww_SIP_Combined_Dataset_{datetime.now():%Y%m%d}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 disabled=not len(df_master), key="dl_combined", use_container_width=True)
-            st.caption(f"wb + Reddit + YouTube · {len(df_master):,} unique rows · 13-column schema")
         with ex2:
             st.download_button(
-                "🏅 Download Validated Retention Dataset (.xlsx)",
+                "🏅 Download Validated Insights Dataset (.xlsx)",
                 data=golden_raw or (dataset_to_xlsx(df_golden, "Golden Set") if df_golden is not None else b""),
-                file_name="validated_retention_dataset.xlsx",
+                file_name="validated_insights_dataset.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 disabled=df_golden is None, key="dl_golden", use_container_width=True)
-            st.caption(f"{0 if df_golden is None else len(df_golden)} benchmark rows" +
-                       (" · original workbook with all sheets" if golden_raw else ""))
         st.divider()
         st.markdown("#### Discovery Workbook")
-        st.markdown(
-            "- **Sheet 1 · Combined Discovery Dataset** — All normalized user reviews with clickable source links")
         scope = st.radio("Rows to export", ["Full dataset", "Current filtered view"], horizontal=True, key="export_scope")
         _ecols = ec.COLUMNS + [c for c in ("Year", "Label Source") if c in df_all.columns]
         export_df = df_all[_ecols] if scope == "Full dataset" else df[_ecols]

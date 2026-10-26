@@ -71,7 +71,77 @@ PREVENT_NUDGE = "High – FinTech Nudge"
 PREVENT_EDU = "Medium – Investor Education"
 PREVENT_LOW = "Low – External / Life Event"
 PREVENTABILITY_LEVELS = [PREVENT_UX, PREVENT_NUDGE, PREVENT_EDU, PREVENT_LOW]
-ADDRESSABLE_LEVELS = {PREVENT_UX, PREVENT_NUDGE}
+# "Addressable" = High or Medium preventability (product/UX fix, fintech nudge or investor education)
+ADDRESSABLE_LEVELS = {PREVENT_UX, PREVENT_NUDGE, PREVENT_EDU}
+NOT_ASSESSED = "Not assessed"
+MISSING_LABELS = {"", "nan", "none", "<na>", "null", "not assessed", "unknown", "n/a", "na"}
+
+
+def normalize_preventability(val):
+    """Map any spelling ('High - Product UX fix', 'High â€“ FinTech Nudge', 'medium', ...) to a canonical level."""
+    v = str(val).strip().lower() if val is not None else ""
+    try:
+        if val is not None and pd.isna(val):
+            v = ""
+    except (TypeError, ValueError):
+        pass
+    if v in MISSING_LABELS:
+        return NOT_ASSESSED
+    if v.startswith("high"):
+        return PREVENT_NUDGE if ("nudge" in v or "fintech" in v) else PREVENT_UX
+    if v.startswith("medium") or v.startswith("med"):
+        return PREVENT_EDU
+    if v.startswith("low"):
+        return PREVENT_LOW
+    return str(val).strip()
+
+
+def is_addressable(val) -> bool:
+    """High or Medium preventability, case-insensitive and tolerant of dash/encoding variants."""
+    v = str(val).strip().lower()
+    return v.startswith("high") or v.startswith("med")
+
+
+def normalize_theme(val):
+    """Match theme labels case/spacing-insensitively to the canonical THEMES list."""
+    v = re.sub(r"\s+", " ", str(val)).strip()
+    key = re.sub(r"[^a-z]", "", v.lower())
+    for t in THEMES:
+        if re.sub(r"[^a-z]", "", t.lower()) == key:
+            return t
+    return v
+
+
+_WORD_NUMS = {"one": 1, "a": 1, "an": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+              "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12}
+
+
+def parse_tenure(val):
+    """Tenure in whole months from numbers or text: 11, '11', '12 months', '1 year', '1.5 years',
+    '10-14 months' (midpoint), 'M10'. Returns pd.NA when no tenure is stated."""
+    if val is None:
+        return pd.NA
+    try:
+        if pd.isna(val):
+            return pd.NA
+    except (TypeError, ValueError):
+        pass
+    if isinstance(val, (int, float, np.integer, np.floating)) and not isinstance(val, bool):
+        return int(round(float(val)))
+    t = str(val).strip().lower().replace("–", "-").replace("—", "-")
+    if not t or t in MISSING_LABELS or t.startswith("not"):
+        return pd.NA
+    m = re.search(r"(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)", t)
+    if m:
+        n = (float(m.group(1)) + float(m.group(2))) / 2
+    else:
+        m = re.search(r"(\d+(?:\.\d+)?|" + "|".join(_WORD_NUMS) + r")\b", t)
+        if not m:
+            return pd.NA
+        n = float(m.group(1)) if m.group(1)[0].isdigit() else _WORD_NUMS[m.group(1)]
+    if re.search(r"\b(years?|yrs?|saal)\b", t):
+        n *= 12
+    return int(round(n))
 
 STAGES = [
     "Activation (M0–3)",
@@ -84,10 +154,8 @@ TENURE_BANDS = [
     ("0–3 months", 0, 3),
     ("4–6 months", 4, 6),
     ("7–9 months", 7, 9),
-    ("10–14 months (Cliff)", 10, 14),
-    ("15–24 months", 15, 24),
-    ("25–36 months", 25, 36),
-    ("37+ months", 37, 600),
+    ("10–12 months", 10, 12),
+    ("13+ months", 13, 10_000),
 ]
 
 DEFAULT_PLAY_APPS = [
@@ -186,7 +254,8 @@ def explain_theme(text_or_theme: str) -> dict:
     return {'matched': matched, 'description': desc, 'intervention': interv, 'nsm': nsm, 'text': f'{desc} {interv}'}
 
 def tenure_band(months) -> str:
-    if months is None or pd.isna(months):
+    months = parse_tenure(months)
+    if months is pd.NA:
         return "Not stated"
     try:
         m = int(months)
@@ -305,29 +374,39 @@ def run_live_ingestion(count: int = 20) -> tuple[pd.DataFrame, dict]:
         return df.head(count), meta
     return pd.DataFrame(columns=COLUMNS), {"source": "empty", "total": 0}
 
+def _dominant_emotion(series: pd.Series) -> str:
+    vals = [str(v).strip() for v in series if v is not None and not (isinstance(v, float) and np.isnan(v))
+            and str(v).strip().lower() not in MISSING_LABELS]
+    return Counter(vals).most_common(1)[0][0] if vals else "Anxiety / Frustration"
+
+
 def summarize(df: pd.DataFrame) -> dict:
     n = len(df)
     if n == 0:
         return {"n": 0}
-    ten = df["SIP Tenure (Months)"]
-    cliff = int(((ten >= 10) & (ten <= 14)).fillna(False).sum())
-    addressable = int(df["Churn Preventability"].isin(ADDRESSABLE_LEVELS).sum())
+    df = df.copy()
+    df["Problem Theme"] = df["Problem Theme"].map(normalize_theme)
+    ten = pd.to_numeric(df["SIP Tenure (Months)"].map(parse_tenure), errors="coerce")
+    df["SIP Tenure (Months)"] = ten
+    cliff = int(ten.between(10, 14).sum())
+    addressable = int(df["Churn Preventability"].map(is_addressable).sum())
     themes = []
     for theme in THEMES:
         sub = df[df["Problem Theme"] == theme]
         if sub.empty:
             continue
-        emo_counts = Counter(sub["Investor Emotional Trigger"])
-        emo = emo_counts.most_common(1)[0][0] if emo_counts else "Frustration"
+        emo = _dominant_emotion(sub["Investor Emotional Trigger"])
         themes.append({
             "Problem Theme": theme,
             "Records": len(sub),
             "Share": len(sub) / n,
             "Median Tenure (Months)": float(sub["SIP Tenure (Months)"].dropna().median()) if sub["SIP Tenure (Months)"].notna().any() else 10.0,
             "Dominant Emotion": emo,
-            "Addressable Share": float(sub["Churn Preventability"].isin(ADDRESSABLE_LEVELS).mean()),
+            "Addressable Share": float(sub["Churn Preventability"].map(is_addressable).mean()),
         })
-    theme_df = pd.DataFrame(themes).sort_values("Records", ascending=False)
+    theme_df = (pd.DataFrame(themes).sort_values("Records", ascending=False) if themes
+                else pd.DataFrame(columns=["Problem Theme", "Records", "Share", "Median Tenure (Months)",
+                                           "Dominant Emotion", "Addressable Share"]))
     known_tenure = int(ten.notna().sum())
     return {
         "n": n,
