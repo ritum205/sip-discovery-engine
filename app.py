@@ -8,6 +8,7 @@ Deploy:        Streamlit Community Cloud → New app → this repo → app.py
 
 from __future__ import annotations
 
+import html
 import os
 import re
 from collections import Counter
@@ -81,6 +82,17 @@ st.markdown(
   div[data-testid="stForm"] {{ border: 1px solid #E3E8EF; border-radius: 12px; padding: 10px 14px 4px 14px; }}
   .footer {{ color: #5A6B82; font-size: 0.8rem; border-top: 1px solid #E3E8EF; padding-top: 12px; margin-top: 28px; }}
   [data-testid="stSidebar"] {{ background: {LIGHT}; }}
+  .scope-badge {{ display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(0,208,156,.45);
+                 background: rgba(0,208,156,.08); color: {NAVY}; border-radius: 999px; padding: 5px 14px;
+                 font-size: 0.84rem; margin: 2px 0 14px 0; }}
+  /* Pulsing glow on the "Ask" button (the only form submit button on the page). Box-shadow only,
+     so colours, size and click handling are unchanged. */
+  div[data-testid="stFormSubmitButton"] button {{ animation: pulse 2.4s ease-out infinite; }}
+  @keyframes pulse {{
+      0%   {{ box-shadow: 0 0 0 0 rgba(0,208,156,0.55); }}
+      70%  {{ box-shadow: 0 0 0 10px rgba(0,208,156,0); }}
+      100% {{ box-shadow: 0 0 0 0 rgba(0,208,156,0); }} }}
+  @media (prefers-reduced-motion: reduce) {{ div[data-testid="stFormSubmitButton"] button {{ animation: none; }} }}
 </style>
 """,
     unsafe_allow_html=True,
@@ -113,9 +125,133 @@ def keyword_mask(frame: pd.DataFrame, term: str) -> pd.Series:
 # ---------------------------------------------------------------------------
 # Data loaders (cached)
 # ---------------------------------------------------------------------------
+MASTER_SCHEMA = ["Product", "Source Platform", "Source URL", "Original Comment", "User Type", "SIP Tenure (Months)",
+                 "SIP Stage", "Problem Theme", "Problem Behaviour", "Problem Root Cause", "Investor Emotional Trigger",
+                 "Churn Preventability", "Year"]
+SOURCE_FILES = ["wb.xlsx", "reddit_sip_reviews.csv", "youtube_sip_comments.csv"]
+
+
+def _find_data_file(name: str):
+    """Look next to app.py first, then in a data/ sub-folder and the working directory."""
+    from pathlib import Path
+    here = Path(__file__).resolve().parent
+    for folder in (here, here / "data", Path.cwd(), Path.cwd() / "data"):
+        if (folder / name).exists():
+            return folder / name
+    return None
+
+
+def _clean_schema(df: pd.DataFrame) -> pd.DataFrame:
+    """Harmonise one source: drop Age, ensure the 13-column schema incl. Year, binary Product."""
+    df = df.drop(columns=[c for c in df.columns if str(c).strip().lower() == "age"])
+    for col in MASTER_SCHEMA:
+        if col not in df.columns:
+            df[col] = pd.NA
+    df = df[MASTER_SCHEMA].copy()
+    df["Original Comment"] = df["Original Comment"].map(lambda x: html.unescape(str(x)).strip() if pd.notna(x) else "")
+    df["Product"] = df["Product"].map(lambda p: "Groww" if "groww" in str(p).lower() else "Other")
+    df["Year"] = pd.to_numeric(df["Year"], errors="coerce").astype("Int64")
+    df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"], errors="coerce").astype("Int64")
+    return df
+
+
+@st.cache_data(show_spinner=False)
+def load_master_dataset():
+    """wb.xlsx + reddit_sip_reviews.csv + youtube_sip_comments.csv -> df_master.
+    Returns (df_master, info) where info has per-file row counts, missing files and duplicates removed."""
+    frames, info = [], {"rows": {}, "missing": [], "errors": [], "extracted": 0, "duplicates": 0}
+    for name in SOURCE_FILES:
+        path = _find_data_file(name)
+        if path is None:
+            info["missing"].append(name)
+            continue
+        try:
+            raw = pd.read_excel(path) if name.endswith(".xlsx") else pd.read_csv(path)
+        except Exception as exc:
+            info["errors"].append(f"{name}: {type(exc).__name__}")
+            continue
+        info["rows"][name] = len(raw)
+        frames.append(_clean_schema(raw))
+    if not frames:
+        return pd.DataFrame(columns=MASTER_SCHEMA), info
+    master = pd.concat(frames, ignore_index=True)
+    info["extracted"] = len(master)
+    master = master.drop_duplicates(subset=["Original Comment", "Source URL"]).reset_index(drop=True)
+    info["duplicates"] = info["extracted"] - len(master)
+    return master, info
+
+
+@st.cache_data(show_spinner=False)
+def load_golden_set():
+    """golden_set.xlsx (sheet 'Golden Set' or first sheet) or golden_set.csv -> (df_golden, file name, raw xlsx bytes)."""
+    import io
+    xlsx, csv = _find_data_file("golden_set.xlsx"), _find_data_file("golden_set.csv")
+    try:
+        if xlsx is not None:
+            raw = xlsx.read_bytes()
+            sheets = pd.read_excel(io.BytesIO(raw), sheet_name=None)
+            df = sheets.get("Golden Set", next(iter(sheets.values())))
+            name = "golden_set.xlsx"
+        elif csv is not None:
+            df, raw, name = pd.read_csv(csv), None, "golden_set.csv"
+        else:
+            return None, None, None
+    except Exception:
+        return None, None, None
+    df = df.drop(columns=[c for c in df.columns if str(c).strip().lower() == "age"])
+    for col in MASTER_SCHEMA:
+        if col not in df.columns:
+            df[col] = pd.NA
+    df = df[MASTER_SCHEMA].copy()
+    df["Original Comment"] = df["Original Comment"].astype(str).map(html.unescape)
+    df["Year"] = pd.to_numeric(df["Year"], errors="coerce").astype("Int64")
+    df["SIP Tenure (Months)"] = pd.to_numeric(df["SIP Tenure (Months)"], errors="coerce").astype("Int64")
+    return df, name, raw
+
+
+@st.cache_data(show_spinner=False)
+def dataset_to_xlsx(df: pd.DataFrame, sheet: str) -> bytes:
+    """Plain formatted workbook: navy headers, wrapped text, clickable Source URL, filters."""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet[:31]
+    widths = {"Original Comment": 60, "Source URL": 40, "Problem Behaviour": 40, "Problem Root Cause": 40}
+    for c, col in enumerate(df.columns, 1):
+        cell = ws.cell(1, c, col)
+        cell.font, cell.fill = Font(name="Arial", bold=True, color="FFFFFF"), PatternFill("solid", fgColor=NAVY[1:])
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+        ws.column_dimensions[get_column_letter(c)].width = widths.get(col, 18)
+    for r, row in enumerate(df.itertuples(index=False), 2):
+        for c, v in enumerate(row, 1):
+            v = None if (not isinstance(v, str) and pd.isna(v)) else (v.item() if hasattr(v, "item") else v)
+            cell = ws.cell(r, c, v)
+            cell.font = Font(name="Arial", size=10)
+            cell.alignment = Alignment(wrap_text=True, vertical="top")
+            if df.columns[c - 1] == "Source URL" and v and str(v).startswith("http"):
+                cell.hyperlink = str(v)
+                cell.font = Font(name="Arial", size=10, color="0563C1", underline="single")
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(df.columns))}{len(df) + 1}"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 @st.cache_data(show_spinner=False)
 def get_benchmark():
-    """Real harvested benchmark first; synthetic demo corpus only if the file is missing."""
+    """Dashboard dataset: the hand-labelled golden set when available; otherwise the previous
+    real benchmark (real_benchmark_220.json), then the synthetic demo corpus."""
+    golden, name, _ = load_golden_set()
+    if golden is not None and len(golden):
+        df = golden.copy()
+        kb = {t: v for t, v in ec.THEME_KB.items()}
+        df["Recommended Groww Intervention"] = df["Problem Theme"].map(lambda t: kb.get(t, {}).get("intervention", pd.NA))
+        df["Target North-Star Metric Impact"] = df["Problem Theme"].map(lambda t: kb.get(t, {}).get("nsm", pd.NA))
+        return df, {"source": name, "harvested_at": "", "rejected_non_post_urls": 0}, True
     df, meta = ec.load_real_benchmark()
     if df is not None:
         return df, meta, True
@@ -1230,11 +1366,29 @@ st.markdown(
 )
 chat_slot = st.container()  # filled once the dataset is resolved, but rendered right here under the header
 
+df_master, master_info = load_master_dataset()
+df_golden, golden_file, golden_raw = load_golden_set()
+
 c1, c2, c3, c4 = st.columns(4)
-c1.markdown(card("North-Star Target", "↑ M12 SIP Retention", "Share of SIPs still active 12 months after activation", True), unsafe_allow_html=True)
-c2.markdown(card("Focus Cohort", "First-time MF investors", "New-to-investing users on their first SIP"), unsafe_allow_html=True)
-c3.markdown(card("Churn Drivers Tracked", "8 themes", "From Disappointment Valley to Platform Bugs"), unsafe_allow_html=True)
-c4.markdown(card("Compliance Mode", "Zero PII · No advice"), unsafe_allow_html=True)
+_groww_n = int((df_master["Product"] == "Groww").sum())
+c1.markdown(card("Total Reviews Extracted", f"{master_info['extracted']:,}",
+                 " + ".join(f"{n:,} {f.split('_')[0].split('.')[0]}" for f, n in master_info["rows"].items())
+                 + (f" · {len(df_master):,} unique" if master_info["duplicates"] else ""), True), unsafe_allow_html=True)
+c2.markdown(card("Groww vs Other", f"{_groww_n:,} | {len(df_master) - _groww_n:,}",
+                 "Groww | Other (unique reviews, by Product field)"), unsafe_allow_html=True)
+c3.markdown(card("AI Golden Set Count", f"{0 if df_golden is None else len(df_golden):,}",
+                 f"Benchmark rows from {golden_file}" if df_golden is not None else "golden_set.xlsx / .csv not found"),
+            unsafe_allow_html=True)
+_years = df_master["Year"].dropna()
+c4.markdown(card("Longitudinal Span", f"{int(_years.min())} – {int(_years.max())}" if len(_years) else "—",
+                 f"Coverage across {len(_years):,} dated reviews" if len(_years) else "No Year values found"),
+            unsafe_allow_html=True)
+st.markdown('<div class="scope-badge">🌐 Ingested &amp; analyzed user sentiment across English, Hindi (हिन्दी), '
+            'and Hinglish</div>', unsafe_allow_html=True)
+if master_info["missing"] or master_info["errors"]:
+    st.warning("Some source files could not be loaded: "
+               + ", ".join(master_info["missing"] + master_info["errors"])
+               + ". Place them next to app.py; KPIs and exports use the files that loaded.")
 
 with st.expander("⚙️ Engine methodology", expanded=False):
     m1, m2, m3, m4 = st.columns(4)
@@ -1421,7 +1575,15 @@ if live_mode:
         st.stop()
 else:
     df_all = bench_df
-    if bench_is_real:
+    if bench_is_real and bench_meta.get("source", "").startswith("golden_set"):
+        provenance = (f"AI golden benchmark ({bench_meta['source']}): {len(df_all)} hand-labelled public reviews and "
+                      "comments. Every Source URL opens the original review, thread or video.")
+        st.markdown(
+            f'<div class="notice" style="background:#E9FBF5;border-color:#9BE6CF;color:#0B5A45">'
+            f'<b>AI golden benchmark</b> · {len(df_all)} hand-labelled records from {bench_meta["source"]} · '
+            f'the full combined dataset ({len(df_master):,} unique reviews) is in the Export tab. '
+            f'Tenure is shown only where the author stated it.</div>', unsafe_allow_html=True)
+    elif bench_is_real:
         when = (bench_meta.get("harvested_at") or "")[:10]
         provenance = (f"Real public benchmark: {len(df_all)} verbatim, PII-scrubbed Play Store reviews and Reddit "
                       f"posts/comments harvested {when}. Every Source URL opens the original review or thread. "
@@ -1458,8 +1620,9 @@ st.markdown(f"<h3 style='color:{NAVY};margin-bottom:4px'>Discovery Filters</h3>"
 f1, f2, f3, f4 = st.columns(4)
 sel_theme = f1.multiselect("Problem Theme", present("Problem Theme", ec.THEMES), placeholder="All 8 drivers", key="f_theme")
 sel_band = f2.multiselect("SIP Tenure", present("Tenure Band", band_order), placeholder="All tenures", key="f_band")
-sel_stage = f3.multiselect("SIP Stage", present("SIP Stage", ec.STAGES + ["Unknown Stage"]), placeholder="All stages",
-                           key="f_stage")
+_stage_opts = present("SIP Stage", ec.STAGES + ["Unknown Stage"])
+_stage_opts += sorted(str(x) for x in set(df_all["SIP Stage"].dropna()) if x not in _stage_opts)
+sel_stage = f3.multiselect("SIP Stage", _stage_opts, placeholder="All stages", key="f_stage")
 sel_prev = f4.multiselect("Churn Preventability", present("Churn Preventability", ec.PREVENTABILITY_LEVELS),
                           placeholder="All levels", key="f_prev")
 
@@ -1630,6 +1793,26 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
                            disabled=table_df.empty)
 
     with tab_export:
+        st.markdown("#### Datasets")
+        ex1, ex2 = st.columns(2)
+        with ex1:
+            st.download_button(
+                "📥 Download Combined Dataset (.xlsx)",
+                data=dataset_to_xlsx(df_master, "Combined Discovery Dataset") if len(df_master) else b"",
+                file_name=f"Groww_SIP_Combined_Dataset_{datetime.now():%Y%m%d}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                disabled=not len(df_master), key="dl_combined", use_container_width=True)
+            st.caption(f"wb + Reddit + YouTube · {len(df_master):,} unique rows · 13-column schema")
+        with ex2:
+            st.download_button(
+                "🏅 Download AI Golden Benchmark Set (.xlsx)",
+                data=golden_raw or (dataset_to_xlsx(df_golden, "Golden Set") if df_golden is not None else b""),
+                file_name="golden_set.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                disabled=df_golden is None, key="dl_golden", use_container_width=True)
+            st.caption(f"{0 if df_golden is None else len(df_golden)} benchmark rows" +
+                       (" · original workbook with all sheets" if golden_raw else ""))
+        st.divider()
         st.markdown("#### Discovery Workbook")
         st.markdown(
             "- **Sheet 1 · Discovery Dataset** — all records, navy headers, auto-filters, frozen panes, wrapped comments, clickable source links")
