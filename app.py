@@ -11,6 +11,7 @@ from __future__ import annotations
 import html
 import os
 import re
+import unicodedata
 from collections import Counter
 from datetime import datetime
 
@@ -123,10 +124,16 @@ st.markdown(
   .ev-meta b {{ color: {NAVY}; }}
   .ev-meta a {{ color: #2563EB; }}
   .ev-quote {{ border-left: 3px solid #9BB3D1; padding: 2px 0 2px 12px; color: #1F2937; font-size: 0.93rem; line-height: 1.5; }}
-  .ev-trans {{ margin-top: 10px; background: rgba(0,208,156,.07); border: 1px solid rgba(0,208,156,.35);
-              border-radius: 10px; padding: 8px 12px; font-size: 0.9rem; color: #1F2937; }}
-  .ai-badge {{ display: inline-block; font-size: 0.72rem; font-weight: 700; color: #00805F; background: rgba(0,208,156,.15);
-              border-radius: 999px; padding: 1px 9px; margin-bottom: 4px; }}
+  .ev-quote {{ overflow-wrap: anywhere; word-break: break-word; }}
+  .ev-trans {{ background-color: #ECFDF5; border: 1px solid #A7F3D0; border-radius: 8px; padding: 14px; margin-top: 12px;
+              box-sizing: border-box; max-width: 100%; overflow: hidden; }}
+  .ai-badge {{ display: inline-flex; align-items: center; gap: 4px; background-color: #D1FAE5; border-radius: 12px;
+              padding: 2px 8px; margin-bottom: 8px; max-width: 100%; white-space: nowrap; }}
+  .ai-badge-icon {{ font-size: 14px; line-height: 1; flex-shrink: 0; }}
+  .ai-badge-text {{ font-size: 11px; font-weight: 700; color: #065F46; text-transform: uppercase; letter-spacing: 0.05em;
+                   overflow: hidden; text-overflow: ellipsis; }}
+  .ev-trans-text {{ font-size: 13px; color: #065F46; line-height: 1.45; margin: 0; font-style: normal;
+                   overflow-wrap: anywhere; word-break: break-word; white-space: normal; }}
   .ev-tags {{ margin-top: 8px; font-size: 0.76rem; color: #5A6B82; }}
 </style>
 """,
@@ -177,9 +184,21 @@ KEEP_WB_LABELS = False
 AUTO_TAG_RULES = {'Disappointment Valley': [('\\b(no|zero|negative|flat|poor|low|bad)\\s+returns?\\b', 3), ('\\breturns?\\b.{0,30}\\b(fd|fixed deposit|savings account|rd)\\b', 3), ('\\b(fd|fixed deposit)\\b.{0,40}\\bbetter\\b', 3), ('\\b(red|in loss|losing money|lost money|xirr)\\b', 2), ("\\bnot worth\\b|\\bwaste of (time|money)\\b|\\bwhat'?s the point\\b", 2), ('\\b(a|one|1)\\s*(year|yr)\\b.{0,40}\\b(nothing|same|flat|loss)\\b', 3), ('\\bdisappoint', 2)], 'Bank & Auto-Debit Friction': [('\\bmandate\\b', 3), ('\\b(auto[\\s-]?pay|auto[\\s-]?debit|e-?nach|nach)\\b', 3), ('\\bbounce(d)?\\b|\\bdebit failed\\b|\\bpayment failed\\b|\\binsufficient (funds|balance)\\b', 3), ('\\b(penalty|bounce charge|charges? by (my )?bank)\\b', 2), ('\\bchang(e|ed|ing) (my )?bank\\b|\\bnew bank account\\b', 2), ('\\bupi\\b.{0,20}\\b(fail|limit|expired?)\\b', 2)], 'Same-Category Overlap': [('\\boverlap(ping)?\\b', 4), ('\\b(too many|multiple|\\d+|five|four|six|seven) (mutual )?funds\\b', 2), ('\\b(same|similar) (stocks?|holdings?|portfolio)\\b', 3), ('\\b(flexi ?cap|large ?cap|mid ?cap|small ?cap|index fund).{0,40}\\b(another|also|again)\\b', 2), ('\\bconsolidat', 3), ('\\b(confus|clutter|messy portfolio)', 2)], 'Directionless Onboarding': [("\\b(no|without a|didn'?t have a|never had a) (goal|plan|reason)\\b", 4), ('\\bjust started\\b|\\bstarted because\\b|\\bsaw (a|on) (youtube|instagram|reel)\\b', 2), ("\\bdon'?t (know|understand) (why|what)\\b", 2), ('\\b(random(ly)?|blindly|impulse)\\b', 2), ('\\bwhat (am i|was i) (investing|saving) for\\b', 4), ('\\bgoal\\b', 1), ('\\b(paisa|paise|pesa|money|amount|refund|invested amount)\\b.{0,50}\\b(wapas|vapas|back|credit\\w*|account|withdraw\\w*|milega|aayega|aaye)\\b', 3), ('cancel\\w*.{0,60}\\b(redeem\\w*|withdraw\\w*|nikal\\w*)\\b|\\b(redeem\\w*|withdraw\\w*)\\b.{0,60}cancel', 3), ('\\b(lock[- ]?in|lock period|3 yrs|3 years|elss)\\b', 2), ('\\b(regular plan|direct plan|by mistake|galti se|mistakenly|accidentally)\\b', 3)], 'Liquidity Shortage': [('\\b(lost|losing) (my )?job\\b|\\blaid off\\b|\\blayoff\\b|\\bjob change\\b|\\bnotice period\\b', 4), ('\\b(rent|emi|loan|wedding|medical|hospital|emergency|fees)\\b', 2), ("\\b(tight|short|no) (on )?(money|cash|funds)\\b|\\bcan'?t afford\\b|\\bcash ?crunch\\b", 4), ('\\bneeded (the )?money\\b|\\bneed(ed)? cash\\b', 3), ('\\bsalary (delayed|cut|late)\\b', 3), ('\\b(paise na ho|paisa nahi|no money|cash short|short of cash|salary)\\b', 3)], 'Market Correction Panic': [('\\b(crash(ed|ing)?|correction|fall(ing)?|bloodbath|dip|down \\d+%|sensex|nifty)\\b', 3), ('\\b(scared|panic(ked)?|fear|afraid|worried)\\b', 3), ('\\b(war|election|recession|tariff|fii selling)\\b', 2), ('\\bwill go (lower|down)\\b|\\bmarket (is|was) (down|falling)\\b', 3)], 'Social Influence': [('\\b(friend|friends|colleague|cousin|brother|uncle|everyone)\\b.{0,40}\\b(said|told|making|earning|switched|moved)\\b', 3), ('\\b(f&o|futures|options trading|crypto|intraday|direct stocks?)\\b', 3), ('\\b(finfluencer|youtuber|telegram|tip)\\b', 2), ('\\bmutual funds? (are|is) (for|too) (slow|boring|old)\\b', 3)], 'Platform Bugs': [('\\b(bug|glitch|crash(es|ed)? (the )?app|app (is )?(not working|crashing|hangs))\\b', 4), ('\\b(wrong|incorrect|not updated|mismatch)\\b.{0,30}\\b(nav|units|amount|value|statement|status)\\b', 3), ('\\b(showing|shows|showed) (cancelled|failed|pending)\\b', 3), ('\\b(support|customer care|ticket)\\b.{0,30}\\b(no response|useless|not respond)\\b', 2), ('\\b(otp|login|kyc)\\b.{0,20}\\b(issue|problem|fail)\\b', 2), ('cancel\\w*.{0,60}\\b(still|again|phir|fir|bhi|after)\\b.{0,40}\\b(deduct\\w*|debit\\w*|cut|kat\\w*|charge\\w*)', 4), ('\\b(deduct\\w*|debit\\w*|cut|kat\\w*)\\b.{0,40}\\b(after|even after|ke baad|ke bad)\\b.{0,20}cancel', 4), ('(cancel|pause|resume|restart)\\w*.{0,40}\\b(nahi|nhi|not|nai)\\b.{0,25}\\b(ho|hua|work\\w*|show\\w*|aa|dikh\\w*|allow\\w*)', 3), ('\\b(in progress|processing|process me|pending|progress me)\\b', 2), ('\\boption\\b.{0,25}\\b(nahi|nhi|not|nai|missing)\\b|\\b(no|not)\\b.{0,10}\\boption\\b', 3), ('\\b(registration not valid|cannot be cancelled|not allowed)\\b', 4)]}
 _AUTO_TAG = {t: [(re.compile(p, re.I), w) for p, w in rules] for t, rules in AUTO_TAG_RULES.items()}
 _DEVANAGARI = re.compile(r"[\u0900-\u097F]")
-_HINGLISH = set("""hai hain nahi nhi kya kaise kese kare kre karna krna karu kru mera mere meri maine mene bhai paisa
-paise raha rha rahi rhi gaya gya gyi hoga hogi lekin aur toh bhi wala wali jata jati kab kyu kyun abhi sakte skte chahiye
-pehle phir fir dubara kar kr ho""".split())
+# Romanised Indic vocabulary for non-English detection (Hindi/Hinglish, Telugu, Tamil, Marathi).
+# Strong words are rarely English; weak ones are short particles that only count alongside others.
+_NON_ENGLISH_STRONG = set("""
+hai hain nahi nhi kya kaise kese karna krna karu kru mera mere meri maine mene paisa paise raha rha rahi rhi gaya gya gyi
+hoga hogi lekin toh wala wali jata jati kyu kyun abhi sakte skte chahiye pehle dubara hua hue kiya kiye diya liya mujhe
+kitne kitna hoti hota hote tho padega bolo batana karni karte karke kare karen karne krne kre baad hamari humne hamara
+kayse kaha agar agr jayega jayenge rahega apna apne aapka apka kuch koi bahut bohot jab tak wapas vapas milega aayega
+kaat kat gaye
+nenu nennu naaku naku meeru memu manam cheyali cheyyali chesanu chesa chesthunna chestunna chesthunnanu chestunnanu
+chesina chesaru ayindi ayyindi ayyi avuthundi avutundi avuthmdhi avtundi undi undhi unnai unnayi vmnai ledu levu ledhu
+raledu kaani kani malli vere enduku emaina enti eppudu ippudu ela kavali kaavali pettina pettanu kuda kooda anukondi
+illa irukku iruku panna pannunga enna eppadi naan enakku venum vendam
+aahe kasa kase mala tumhi
+""".split())
+_NON_ENGLISH_WEAK = set("kar kr ho se aur bhi bhai fir phir kab oka lo ka ki ke na k m h par ya".split())
 
 
 def auto_tag_theme(text: str) -> str:
@@ -227,10 +246,27 @@ def infer_preventability(text: str, theme: str) -> str:
     return _THEME_PREVENT.get(theme, ec.NOT_ASSESSED)
 
 
-def needs_translation(text: str) -> bool:
-    """Devanagari script or romanised Hindi (Hinglish)."""
+def is_non_english(text) -> bool:
+    """True for comments that need an English translation: any non-Latin script (Devanagari, Telugu, Tamil, etc.)
+    or romanised Indic text such as Hinglish or Telugu typed in English letters. Emojis, the rupee sign and
+    curly quotes are not letters, so they never trigger it; one stray Hindi word in an English comment doesn't either."""
+    if text is None:
+        return False
+    try:
+        if pd.isna(text):
+            return False
+    except (TypeError, ValueError):
+        pass
     t = str(text)
-    return bool(_DEVANAGARI.search(t)) or len(set(re.findall(r"[a-z]+", t.lower())) & _HINGLISH) >= 2
+    if not t.strip():
+        return False
+    if any(ch.isalpha() and not unicodedata.name(ch, "LATIN").startswith("LATIN") for ch in t):
+        return True
+    words = set(re.findall(r"[a-z]+", t.lower()))
+    return 2 * len(words & _NON_ENGLISH_STRONG) + len(words & _NON_ENGLISH_WEAK) >= 3
+
+
+needs_translation = is_non_english  # older name, kept for compatibility
 
 
 def normalize_platform(value) -> str:
@@ -1591,25 +1627,102 @@ def gemini_generate(system: str, user: str, json_mode: bool = False, deadline_s:
     return None, {"ok": False, "model": None, "reason": "; ".join(reasons) or "no models configured"}
 
 
+_TRANSLATE_SYSTEM = (
+    "You translate Indian investor comments into natural, standard English. Inputs may be Hindi, Hinglish, Telugu, "
+    "Tamil, Marathi or another Indian language, in native script or typed in English letters, often mixed with "
+    "English. Fix obvious typos without changing what the user meant. Keep amounts, app, bank and fund names. "
+    "Do not add commentary.")
+
+
+class _TranslationUnavailable(Exception):
+    """Raised inside cached translators so a failed call is never cached; callers treat it as 'no translation'."""
+
+
 @st.cache_data(show_spinner=False, ttl=86400)
-def translate_to_english(texts: tuple) -> dict:
-    """Batch-translate Hindi/Hinglish comments with Gemini. Returns {original: English}; {} if unavailable."""
-    if not texts or not _secret("GEMINI_API_KEY"):
-        return {}
+def _translate_batch_cached(texts: tuple) -> dict:
     import json
     numbered = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(texts))
     text, status = gemini_generate(
-        "You translate Indian investor comments (Hindi, Hinglish, or mixed) into plain, faithful English. "
-        "Keep amounts, app names and meaning; do not add commentary.",
-        f"Translate each numbered comment. Reply with a JSON array of strings in the same order.\n\n{numbered}",
+        _TRANSLATE_SYSTEM,
+        f"Translate each numbered comment. Reply with a JSON array of {len(texts)} strings in the same order.\n\n{numbered}",
         json_mode=True, deadline_s=20.0, max_tokens=2048)
     if not text:
-        return {}
+        raise _TranslationUnavailable(status.get("reason", ""))
     try:
         arr = json.loads(text)
-        return {t: str(e).strip() for t, e in zip(texts, arr) if str(e).strip()}
-    except Exception:
+    except Exception as exc:
+        raise _TranslationUnavailable("unreadable JSON") from exc
+    if isinstance(arr, dict):  # tolerate {"translations": [...]}
+        arr = next((v for v in arr.values() if isinstance(v, list)), [])
+    out = {t: _clean_translation(e) for t, e in zip(texts, arr if isinstance(arr, list) else [])}
+    return {t: e for t, e in out.items() if e}
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def _translate_one_cached(original_text: str) -> str:
+    text, status = gemini_generate(
+        _TRANSLATE_SYSTEM,
+        f"Translate this comment. Reply with the English translation only.\n\nText: {original_text}",
+        deadline_s=8.0, max_tokens=512)
+    cleaned = _clean_translation(text)
+    if not cleaned:
+        raise _TranslationUnavailable(status.get("reason", ""))
+    return cleaned
+
+
+def _clean_translation(value) -> str:
+    """Strips wrapping quotes, labels and whitespace from a model translation."""
+    quotes = '"\u201c\u201d\''
+    t = str(value or "").strip().strip(quotes).strip()
+    t = re.sub(r"^(english( translation)?|translation)\s*:\s*", "", t, flags=re.I)
+    return t.strip().strip(quotes).strip()
+
+
+_TRANSLATE_COOLDOWN_S = 300  # after a failed call, skip translation for 5 minutes so reruns stay fast
+
+
+def _translation_paused() -> bool:
+    import time
+    return time.time() < st.session_state.get("_translate_paused_until", 0)
+
+
+def _pause_translation() -> None:
+    import time
+    st.session_state["_translate_paused_until"] = time.time() + _TRANSLATE_COOLDOWN_S
+
+
+def translate_to_english(texts: tuple) -> dict:
+    """Batch-translate non-English comments with Gemini. Returns {original: English}; {} if unavailable."""
+    if not texts or not _secret("GEMINI_API_KEY") or _translation_paused():
         return {}
+    try:
+        return _translate_batch_cached(tuple(texts))
+    except Exception:
+        _pause_translation()
+        return {}
+
+
+def translate_comment_ai(original_text: str) -> str | None:
+    """Single-comment translation, used when the batch call missed a comment. Cached; never raises."""
+    if not original_text or not _secret("GEMINI_API_KEY") or _translation_paused():
+        return None
+    try:
+        return _translate_one_cached(str(original_text))
+    except Exception:
+        _pause_translation()
+        return None
+
+
+def translate_comments(texts: tuple, max_single: int = 3) -> dict:
+    """Batch first, then at most `max_single` one-by-one retries for anything the batch missed.
+    Stops retrying after the first failure so a slow or down API can't stall the page."""
+    out = translate_to_english(texts)
+    for t in [t for t in texts if t not in out][:max_single]:
+        one = translate_comment_ai(t)
+        if not one:
+            break
+        out[t] = one
+    return out
 
 
 def llm_enabled() -> bool:
@@ -1979,7 +2092,7 @@ if sel_prev:
 
 
 def render_evidence(view: pd.DataFrame, k: int = 6) -> None:
-    """Representative quote cards from the rows currently in view, with AI translations for Hindi/Hinglish."""
+    """Representative quote cards from the rows currently in view, with AI translations for non-English comments."""
     filtered = bool(sel_src or sel_theme or sel_band or sel_stage or sel_prev)
     st.markdown(f"<h4 style='color:{NAVY};margin:18px 0 2px'>Evidence Highlights</h4>", unsafe_allow_html=True)
     st.caption(("Representative comments for the current filters" if filtered else
@@ -2006,8 +2119,10 @@ def render_evidence(view: pd.DataFrame, k: int = 6) -> None:
             per_theme[r["Problem Theme"]] += 1
     picks = ranked.loc[chosen]
     glosses = load_golden_glosses()
-    need = tuple(c for c in picks["Original Comment"] if needs_translation(c) and _text_key(c, "")[0] not in glosses)
-    ai = translate_to_english(need) if need else {}
+    non_english = {c for c in picks["Original Comment"].astype(str) if is_non_english(c)}
+    need = tuple(c for c in picks["Original Comment"].astype(str)
+                 if c in non_english and _text_key(c, "")[0] not in glosses)
+    ai = translate_comments(need) if need else {}
     cols = st.columns(3)
     for i, (_, r) in enumerate(picks.iterrows()):
         comment = str(r["Original Comment"])
@@ -2015,17 +2130,21 @@ def render_evidence(view: pd.DataFrame, k: int = 6) -> None:
         url = html.escape(str(r["Source URL"]), quote=True)
         meta = (f"<b>R{i + 1}</b> · {html.escape(str(r['Source Platform']))} · {html.escape(str(r['Product']))}{year} · "
                 f"<a href=\"{url}\" target=\"_blank\">Open source ↗</a>")
-        trans = glosses.get(_text_key(comment, "")[0]) or ai.get(comment)
-        trans_html = (f'<div class="ev-trans"><span class="ai-badge">🌐 Translated to English by AI</span><br>'
-                      f'{html.escape(trans)}</div>') if (trans and needs_translation(comment)) else ""
+        trans = (glosses.get(_text_key(comment, "")[0]) or ai.get(comment)) if comment in non_english else None
+        trans_html = (f'<div class="ev-trans"><div class="ai-badge"><span class="ai-badge-icon">🌐</span>'
+                      f'<span class="ai-badge-text">Translated to English by AI</span></div>'
+                      f'<p class="ev-trans-text">{html.escape(trans)}</p></div>') if trans else ""
         tags = " · ".join(html.escape(str(r[c])) for c in ("Problem Theme", "SIP Stage")
                           if pd.notna(r[c]) and str(r[c]) not in ("Not stated", "Unclassified"))
         cols[i % 3].markdown(
             f'<div class="ev-card"><div class="ev-meta">{meta}</div>'
             f'<div class="ev-quote">“{html.escape(_excerpt(comment, 420))}”</div>{trans_html}'
             f'{f"<div class=ev-tags>{tags}</div>" if tags else ""}</div>', unsafe_allow_html=True)
-    if any(needs_translation(c) for c in picks["Original Comment"]) and not (glosses or ai):
-        st.caption("English translations for Hindi/Hinglish comments appear when the Gemini API key is configured.")
+    missing = [c for c in non_english if not (glosses.get(_text_key(c, "")[0]) or ai.get(c))]
+    if missing:
+        st.caption("English translations for non-English comments appear when the Gemini API key is configured."
+                   if not _secret("GEMINI_API_KEY") else
+                   "Some non-English comments couldn't be translated right now; the app will try again in a few minutes.")
 
 
 PLOT_LAYOUT = dict(
