@@ -2036,26 +2036,114 @@ PLOT_LAYOUT = dict(
 )
 
 
-def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
-    k1, k2, k3, k4, k5 = st.columns(5)
-    k1.markdown(card("Records in view", f"{summary['n']:,}", f"of {len(df_all):,} analysed"), unsafe_allow_html=True)
-    if summary["known_tenure"] == 0:
-        k2.markdown(card("Churn in M10–14 cliff", "—", "No rows in view state a tenure", True), unsafe_allow_html=True)
-    elif summary["cliff"] == 0:
-        k2.markdown(card("Churn in M10–14 cliff", "0%",
-                         f"None of the {summary['known_tenure']} stated tenures fall in months 10–14", True),
-                    unsafe_allow_html=True)
+# =============================================================================
+# KPI SHELF — 5 uniform SaaS cards in a responsive CSS grid (Groww emerald accents)
+# Rendered at the top of render_dashboard(); replaces the old st.columns(5) metric cards.
+# Requires at module level: `import html`, `import pandas as pd`, `import streamlit as st`, `import engine_core as ec`
+# =============================================================================
+KPI_SHELF_CSS = """
+<style>
+.kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin: 6px 0 18px 0; }
+.kpi-card { height: 140px; box-sizing: border-box; background: #FFFFFF; border: 1px solid #EAECF0; border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05); padding: 14px 16px; display: flex; flex-direction: column;
+            transition: all 0.2s ease; position: relative; overflow: hidden; container-type: inline-size; }
+.kpi-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: #00D09C; opacity: 0; transition: opacity 0.2s ease; }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(16, 24, 40, 0.08); border-color: #D0F5EA; }
+.kpi-card:hover::before { opacity: 1; }
+.kpi-head { height: 18px; display: flex; align-items: center; }
+.kpi-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #667085;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi-metric { height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.kpi-value { font-size: 28px; font-weight: 700; line-height: 1.1; color: #101828; letter-spacing: -0.02em; min-width: 0; }
+.kpi-value.text { font-size: 17px; line-height: 1.22; display: -webkit-box; -webkit-line-clamp: 2;
+                  -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.kpi-pill { display: inline-block; margin-top: 2px; font-size: 11px; font-weight: 500; color: #475467; background: #F2F4F7;
+            border-radius: 999px; padding: 2px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.kpi-badge { flex-shrink: 0; font-size: 10.5px; font-weight: 600; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.kpi-badge.green { color: #027A48; background: #ECFDF3; }
+.kpi-badge.emerald { color: #00805F; background: rgba(0, 208, 156, 0.14); }
+.kpi-badge.red { color: #B42318; background: #FEF3F2; }
+.kpi-badge.amber { color: #B54708; background: #FFFAEB; }
+.kpi-badge.grey { color: #475467; background: #F2F4F7; }
+.kpi-foot { margin-top: auto; font-size: 12px; color: #667085; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical; overflow: hidden; }
+.kpi-pill .short { display: none; }
+@container (max-width: 250px) { .kpi-pill .full { display: none; } .kpi-pill .short { display: inline; }
+                                .kpi-value { font-size: 26px; } .kpi-badge { font-size: 10px; padding: 2px 6px; } }
+@media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px)  { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 460px)  { .kpi-grid { grid-template-columns: minmax(0, 1fr); } }
+</style>
+"""
+
+
+def _kpi_card(label: str, value: str, foot: str, badge: tuple[str, str] | None = None,
+              pill: str | None = None, text_value: bool = False, pill_short: str | None = None) -> str:
+    """One card as a single-line HTML string (no line breaks, so Streamlit's markdown never turns it into a code block)."""
+    esc = lambda x: html.escape(str(x), quote=True)  # noqa: E731
+    badge_html = f'<span class="kpi-badge {badge[1]}">{esc(badge[0])}</span>' if badge else ""
+    pill_html = (f'<div><span class="kpi-pill" title="{esc(pill)}"><span class="full">{esc(pill)}</span>'
+                 f'<span class="short">{esc(pill_short or pill)}</span></span></div>') if pill else ""
+    return (f'<div class="kpi-card">'
+            f'<div class="kpi-head"><span class="kpi-label" title="{esc(label)}">{esc(label)}</span></div>'
+            f'<div class="kpi-metric"><span class="kpi-value{" text" if text_value else ""}" title="{esc(value)}">{esc(value)}</span>{badge_html}</div>'
+            f'{pill_html}'
+            f'<div class="kpi-foot" title="{esc(foot)}">{esc(foot)}</div>'
+            f'</div>')
+
+
+def render_kpi_shelf(view: pd.DataFrame, summary: dict) -> None:
+    """Five uniform KPI cards for the rows currently in view (`view` = filtered df, `summary` = ec.summarize(view))."""
+    n = int(summary.get("n", len(view)))
+
+    # Card 1 · Records in view, with a per-source breakdown pill
+    src = view["Source Platform"].astype(str).value_counts() if "Source Platform" in view else pd.Series(dtype=int)
+    breakdown = " · ".join(f"{int(src.get(p, 0)):,} {p}" for p in ("Play Store", "Reddit", "YouTube"))
+    breakdown_short = " · ".join(f"{int(src.get(p, 0)):,} {s}" for p, s in
+                                 (("Play Store", "Play"), ("Reddit", "Reddit"), ("YouTube", "YT")))
+
+    # Card 2 · M10–14 drop-off cliff (share of rows whose stated tenure falls in months 10–14)
+    tenure_count, cliff_count = int(summary.get("known_tenure", 0)), int(summary.get("cliff", 0))
+    cliff_pct = round(100 * cliff_count / tenure_count) if tenure_count else 0
+    if tenure_count == 0:
+        cliff_badge = ("No data", "grey")
+    elif tenure_count < 30:
+        cliff_badge = ("Limited sample", "amber")  # too few stated tenures to call the window safe or risky
+    elif cliff_count > 0:
+        cliff_badge = ("Drop-off Window", "red")
     else:
-        k2.markdown(card("Churn in M10–14 cliff", f"{summary['cliff_share']:.0%}",
-                         f"{summary['cliff']} of {summary['known_tenure']} with stated tenure", True), unsafe_allow_html=True)
-    _assessed = df[df["Churn Preventability"].map(ec.normalize_preventability).isin(ec.PREVENTABILITY_LEVELS)]
-    _addr = _assessed["Churn Preventability"].map(ec.is_addressable).mean() if len(_assessed) else 0
-    k3.markdown(card("Addressable by Product & Nudges", f"{_addr:.0%}",
-                     f"High or Medium preventability · {len(_assessed):,} assessed cases", True), unsafe_allow_html=True)
-    k4.markdown(card("Top churn driver", summary["top_theme"],
-                     f"{summary['themes'].iloc[0]['Share']:.0%} of records in view"), unsafe_allow_html=True)
-    k5.markdown(card("Records with stated tenure", f"{summary['known_tenure']:,}",
-                     "Used for the drop-off cliff chart"), unsafe_allow_html=True)
+        cliff_badge = ("Safe Horizon", "green")
+
+    # Card 3 · Addressable friction: High or Medium preventability among assessed rows
+    prev = view["Churn Preventability"].map(ec.normalize_preventability) if "Churn Preventability" in view else pd.Series(dtype=str)
+    assessed = prev[prev.isin(ec.PREVENTABILITY_LEVELS)]
+    addressable_pct = round(100 * assessed.map(ec.is_addressable).mean()) if len(assessed) else 0
+
+    # Card 4 · Top churn driver, as a share of rows that carry a problem theme
+    themed = view["Problem Theme"][view["Problem Theme"].isin(ec.THEMES)] if "Problem Theme" in view else pd.Series(dtype=str)
+    if len(themed):
+        top_counts = themed.value_counts()
+        top_driver, top_share = str(top_counts.index[0]), round(100 * top_counts.iloc[0] / len(themed))
+        top_foot = f"{top_share}% of total friction volume"
+    else:
+        top_driver, top_foot = "—", "No themed rows in view"
+
+    cards = [
+        _kpi_card("Records in view", f"{n:,}", "Total user sentiment extracted", pill=breakdown,
+                  pill_short=breakdown_short),
+        _kpi_card("M10–14 Drop-off Cliff", f"{cliff_pct}%" if tenure_count else "—",
+                  f"{cliff_count} of {tenure_count} stated tenures", badge=cliff_badge),
+        _kpi_card("Addressable Friction", f"{addressable_pct}%" if len(assessed) else "—",
+                  "High & Medium preventability cases", badge=("High UX Fix", "emerald")),
+        _kpi_card("Top Churn Driver", top_driver, top_foot, text_value=True),
+        _kpi_card("Cohort Tenures", f"{tenure_count:,}", "Available for cohort cliff curve",
+                  badge=("Stated Duration", "emerald")),
+    ]
+    st.markdown(KPI_SHELF_CSS + '<div class="kpi-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
+
+
+def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
+    render_kpi_shelf(df, summary)
     st.write("")
 
     render_evidence(df)
