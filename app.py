@@ -143,15 +143,140 @@ st.markdown(
 )
 
 
+DESIGN_SYSTEM_CSS = """
+<style>
+/* ---------- Groww-inspired tokens ---------- */
+:root { --canvas: #F8FAFC; --surface: #FFFFFF; --line: #E2E8F0; --ink: #0F172A; --body: #475569; --muted: #94A3B8;
+        --emerald: #00D09C; --emerald-deep: #059669; --amber: #F59E0B; --amber-soft: #FEF3C7; --rose: #EF4444;
+        --rose-soft: #FEE2E2;
+        --elev: 0 1px 3px rgba(15, 23, 42, 0.04), 0 4px 12px rgba(15, 23, 42, 0.02);
+        --elev-hover: 0 6px 20px rgba(0, 208, 156, 0.12); }
+.stApp { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; background: var(--canvas); }
+/* The Ask AI bar keeps Streamlit's own font and look exactly as before */
+[data-testid="stForm"], [data-testid="stForm"] *, .st-key-suggest_chips, .st-key-suggest_chips *,
+[data-testid="stChatMessage"], [data-testid="stChatMessage"] * { font-family: "Source Sans", "Source Sans Pro", "Source Sans 3", sans-serif; }
+.stApp h1, .stApp h2, .stApp h3, .stApp h4 { color: var(--ink); letter-spacing: -0.01em; }
+.stApp .hero h1 { color: #FFFFFF !important; }  /* the navy hero keeps its white title */
+.block-container { padding-top: 1.4rem; }
+
+/* ---------- Header ---------- */
+.hero { margin-bottom: 12px !important; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10); }
+.scope-badge { margin: 0 0 22px 0 !important; box-shadow: var(--elev); background: #F0FDF9 !important; }
+
+/* ---------- Unified card surfaces + hover ---------- */
+.ts-card, .kpi-card, .ins-card, .cov-card, .ev-card {
+    background: var(--surface) !important; border: 1px solid var(--line) !important; box-shadow: var(--elev) !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease !important; }
+.ts-card, .kpi-card, .ins-card, .cov-card { border-radius: 12px !important; border-color: #E2E8F0 !important; }
+.ts-card, .kpi-card { height: 140px !important; }
+.ev-card { border-radius: 14px !important; }
+.ts-card:hover, .kpi-card:hover, .ins-card:hover, .cov-card:hover, .ev-card:hover {
+    transform: translateY(-2px); box-shadow: var(--elev-hover) !important; border-color: #BBF7E4 !important; }
+.ts-label, .kpi-label, .cov-k { color: var(--body) !important; }
+.ts-value, .kpi-value, .cov-v, .ins-v { color: var(--ink) !important; }
+.ts-foot, .kpi-foot, .cov-d, .ins-d { color: #64748B !important; }
+
+/* ---------- Control strip (Discovery Filters) ---------- */
+.st-key-control_strip { background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: var(--elev); padding: 16px 20px 6px 20px; margin: 8px 0 18px 0; }
+.st-key-control_strip .strip-title { margin-top: 0 !important; font-size: 1.15rem; }
+.st-key-control_strip [data-testid="stWidgetLabel"] p { color: var(--body) !important; font-weight: 600 !important;
+    font-size: 0.8rem !important; letter-spacing: .01em; }
+.st-key-control_strip [data-baseweb="select"] > div { min-height: 42px; border-radius: 10px !important;
+    border-color: var(--line) !important; background: #FBFCFE !important; }
+.st-key-control_strip [data-baseweb="select"] > div:focus-within { border-color: var(--emerald) !important;
+    box-shadow: 0 0 0 3px rgba(0, 208, 156, 0.15) !important; }
+.st-key-control_strip [data-baseweb="tag"] { background: #ECFDF5 !important; color: #065F46 !important;
+    border-radius: 999px !important; }
+.st-key-control_strip [data-baseweb="tag"] span { color: #065F46 !important; }
+.st-key-control_strip [role="radiogroup"] { gap: 6px; flex-wrap: wrap; }
+.st-key-control_strip [role="radiogroup"] label { background: #F1F5F9; border: 1px solid var(--line); border-radius: 999px;
+    padding: 4px 12px 4px 8px; margin-right: 0 !important; transition: all .2s ease; }
+.st-key-control_strip [role="radiogroup"] label:has(input:checked) { background: #ECFDF5; border-color: #A7F3D0; }
+
+/* ---------- Chart boxes with Quick Read banner ---------- */
+[class*="st-key-chart_box"] { background: var(--surface); border: 1px solid var(--line); border-radius: 16px;
+    box-shadow: var(--elev); padding: 18px; margin: 16px 0 6px 0; }
+[class*="st-key-chart_box"] .qr { margin: -2px 0 10px 0 !important; border-radius: 10px; background: #F0FDF9;
+    border-color: #CCFBEF; border-left: 4px solid var(--emerald); }
+[class*="st-key-chart_box"] [data-testid="stPlotlyChart"] { background: transparent; }
+
+/* ---------- Tables ---------- */
+.ev-tbl { border-color: var(--line) !important; border-radius: 12px !important; background: var(--surface);
+          width: 100% !important; max-width: 100%; table-layout: auto; }
+.ev-tbl th { background: #F8FAFC !important; color: #64748B !important; }
+.ev-tbl td, .ev-tbl th { white-space: normal !important; word-break: break-word !important; }
+.ev-tbl td.num, .ev-tbl th.num { white-space: nowrap !important; }
+.ev-tbl tbody tr { transition: background .15s ease; }
+.ev-tbl tbody tr:hover td { background: #F8FFFC; }
+.ev-tbl .chip.theme { color: #0F172A; background: #F1F5F9; font-weight: 600; }
+.ev-tbl .chip.emo { font-weight: 700; padding: 3px 10px; }
+.ev-tbl .chip.emo.frustration { color: #C2410C; background: #FFEDD5; }
+.ev-tbl .chip.emo.confusion { color: #1D4ED8; background: #DBEAFE; }
+.ev-tbl .chip.emo.panic { color: #B91C1C; background: var(--rose-soft); }
+.ev-tbl .chip.emo.penalty { color: #9F1239; background: #FFE4E6; }
+.ev-tbl .chip.emo.anxiety { color: #92400E; background: var(--amber-soft); }
+.ev-tbl .chip.emo.distrust { color: #6D28D9; background: #EDE9FE; }
+.ev-tbl .chip.emo.fomo { color: #A16207; background: #FEF9C3; }
+.ev-tbl .chip.emo.disillusion { color: #0F766E; background: #CCFBF1; }
+.ev-tbl .chip.emo.neutral { color: #334155; background: #F1F5F9; }
+[data-testid="stDataFrame"] { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--elev);
+    background: var(--surface); }
+[data-testid="stTabs"] [data-baseweb="tab-list"] { gap: 6px; border-bottom: 1px solid var(--line); }
+[data-testid="stTabs"] [data-baseweb="tab"] { border-radius: 10px 10px 0 0; padding: 8px 14px; }
+[data-testid="stTabs"] [aria-selected="true"] { color: var(--emerald-deep) !important; }
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] { background-color: var(--emerald) !important; }
+
+/* ---------- Buttons ---------- */
+.st-key-eval_cta button, .st-key-evid_cta button, .st-key-eval_cta_open button, .st-key-evid_cta_open button {
+    border-radius: 999px !important; }
+.stDownloadButton button { border-radius: 999px !important; border: 1px solid var(--line) !important; }
+.stDownloadButton button[kind="primary"], .stDownloadButton button[data-testid*="primary"] {
+    background: var(--emerald) !important; border-color: var(--emerald) !important; color: #FFFFFF !important; }
+
+/* ---------- Evidence + translation ---------- */
+.ev-quote { border-left-color: #A7F3D0 !important; color: #1E293B !important; }
+.ev-trans { background-color: #ECFDF5 !important; border-color: #A7F3D0 !important; border-radius: 10px !important; }
+.ev-trans .ai-badge { display: flex !important; width: fit-content; }
+.st-key-evidence_shelf { border-radius: 16px !important; border-color: var(--line) !important; box-shadow: var(--elev) !important; }
+
+/* ---------- Misc surfaces ---------- */
+[data-testid="stAlert"] { border-radius: 12px; }
+.footer { border-top-color: var(--line) !important; color: var(--muted) !important; }
+@media (prefers-reduced-motion: reduce) {
+    .ts-card, .kpi-card, .ins-card, .cov-card, .ev-card { transition: none !important; }
+    .ts-card:hover, .kpi-card:hover, .ins-card:hover, .cov-card:hover, .ev-card:hover { transform: none; } }
+</style>
+"""
+st.markdown(DESIGN_SYSTEM_CSS, unsafe_allow_html=True)
+
+
 def card(label: str, value: str, hint: str = "", accent: bool = False) -> str:
     small = " sm" if len(str(value)) > 14 else ""  # long text values (e.g. a theme name) use a smaller size
     return (f'<div class="card{" accent" if accent else ""}" title="{html.escape(str(hint), quote=True)}">'
             f'<div class="label">{label}</div><div class="value{small}">{value}</div><div class="hint">{hint}</div></div>')
 
 
+def _polish_figure(fig) -> None:
+    """Shared Plotly finish: light gridlines, no axis lines or zero lines, muted tick labels
+    (or the colour a chart asks for via layout.meta['label_color'])."""
+    try:
+        meta = fig.layout.meta if isinstance(getattr(fig.layout, "meta", None), dict) else {}
+        label = meta.get("label_color", "#475569")
+        fig.update_xaxes(gridcolor="#F1F5F9", zeroline=False, showline=False, ticks="",
+                         tickfont=dict(color=label), title_font=dict(color=label, size=12))
+        fig.update_yaxes(gridcolor="#F1F5F9", zeroline=False, showline=False, ticks="",
+                         tickfont=dict(color=label), title_font=dict(color=label, size=12))
+        fig.update_layout(legend=dict(font=dict(color="#475569")))
+    except Exception:
+        pass
+
+
 def stretch(fn, *args, **kwargs):
     """Full-width rendering across Streamlit versions (width='stretch' on new
     releases, use_container_width on older ones)."""
+    if getattr(fn, "__name__", "") == "plotly_chart" and args:
+        _polish_figure(args[0])
     try:
         return fn(*args, width="stretch", **kwargs)
     except Exception:
@@ -553,6 +678,16 @@ def ensure_label_source(df: pd.DataFrame, default: str = SRC_KEYWORD) -> pd.Data
         df["Label Source"] = df[src_col]
     df["Label Source"] = df["Label Source"].map(lambda v: normalize_label_source(v, default))
     return df
+
+
+def provenance_counts(view: pd.DataFrame) -> dict:
+    """{'human','ai','keyword','n'} from the Label Source column. Used by the Total Reviews card."""
+    src = (view["Label Source"].astype(str).str.lower() if "Label Source" in view
+           else pd.Series("", index=view.index))
+    return {"n": len(view),
+            "human": int(src.str.contains("human|golden|validated", na=False).sum()),
+            "ai": int(src.str.contains(r"\bai\b|ai-label|gemini|llm", na=False).sum()),
+            "keyword": int(src.str.contains("keyword|heuristic|auto", na=False).sum())}
 
 
 @st.cache_data(show_spinner=False)
@@ -1953,9 +2088,10 @@ df_golden, golden_file, golden_raw = load_golden_set()
 # =============================================================================
 TOP_SHELF_CSS = """
 <style>
+.ts-wrap { container-type: inline-size; }
 .ts-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 4px 0 14px 0; }
-.ts-card { position: relative; height: 145px; box-sizing: border-box; background: #FFFFFF; border: 1px solid #EAECF0;
-           border-radius: 12px; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05); padding: 16px 18px 14px 18px;
+.ts-card { position: relative; height: 140px; box-sizing: border-box; background: #FFFFFF; border: 1px solid #EAECF0;
+           border-radius: 12px; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05); padding: 14px 18px 12px 18px;
            container-type: inline-size;
            display: flex; flex-direction: column; overflow: hidden; transition: all 0.2s ease; }
 .ts-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px;
@@ -1968,7 +2104,7 @@ TOP_SHELF_CSS = """
 .ts-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16, 24, 40, 0.08); border-color: #D0F5EA; }
 .ts-label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #667085;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 16px; line-height: 16px; }
-.ts-main { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 44px; margin-top: 8px; }
+.ts-main { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 44px; margin-top: 7px; }
 .ts-value { font-size: 30px; font-weight: 700; color: #1B365D; letter-spacing: -0.02em; line-height: 1;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ts-value .sep { color: #C0C8D4; font-weight: 500; margin: 0 4px; }
@@ -1991,9 +2127,23 @@ TOP_SHELF_CSS = """
            text-overflow: ellipsis; }
 .ts-foot b { color: #344054; font-weight: 600; }
 .ts-foot .short { display: none; }
+.ts-src-grid { display: grid; grid-template-columns: auto auto; column-gap: 10px; row-gap: 3px; flex-shrink: 0; }
+.ts-src-i { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: #64748B; white-space: nowrap; line-height: 1.2; }
+.ts-src-i i { width: 7px; height: 7px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+.ts-src-i b { color: #0F172A; font-weight: 700; }
+@container (max-width: 225px) { .ts-src-grid { column-gap: 6px; } .ts-src-i { font-size: 9.5px; } }
+.ts-chips { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .8fr) minmax(0, 1.2fr); gap: 6px; margin-top: auto; }
+.ts-chip { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 5px 2px; text-align: center;
+           min-width: 0; transition: border-color .2s ease; }
+.ts-chip:hover { border-color: #A7F3D0; }
+.ts-chip-v { font-size: 13px; font-weight: 700; color: #0F172A; line-height: 1.25; white-space: nowrap; }
+.ts-chip-l { font-size: 10px; color: #64748B; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-chip-l b { font-weight: 600; color: #475467; }
+@container (max-width: 200px) { .ts-chip-l b { display: none; } }  /* very narrow cards: % stays in the tooltip */
 @container (max-width: 290px) { .ts-foot .full { display: none; } .ts-foot .short { display: inline; } .ts-value { font-size: 28px; } }
-@media (max-width: 1000px) { .ts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 520px)  { .ts-grid { grid-template-columns: minmax(0, 1fr); } }
+/* Layout follows the space the shelf actually has (sidebar open or closed), not the window width */
+@container (max-width: 1099px) { .ts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 540px)  { .ts-grid { grid-template-columns: minmax(0, 1fr); } }
 </style>
 """
 
@@ -2039,17 +2189,34 @@ def render_top_shelf(master: pd.DataFrame, info: dict, golden: pd.DataFrame | No
     bp = info.get("by_platform", {}) or {}
     counts = [(p, int(bp.get(p, 0))) for p in PLATFORMS]
 
-    # Card 1 · Total reviews extracted
-    src_icons = "".join(f'<span title="{t}">{_ts_icon(i, 12)}</span>' for i, t in
-                        (("store", "Play Store"), ("phone", "App Store (merged into Play Store)"),
-                         ("chat", "Reddit"), ("video", "YouTube")))
-    caption1 = " · ".join(f"{n:,} {p}" for p, n in counts)
-    caption1_short = " · ".join(f"{n:,} {p.replace('Play Store', 'Play').replace('YouTube', 'YT')}" for p, n in counts)
+    # Card 1 · Total reviews extracted, with the provenance split of the full dataset in the footer
+    try:
+        pc = provenance_counts(ensure_label_source(build_full_view(master, golden)))
+    except Exception:
+        pc = {"n": len(master), "human": 0, "ai": 0, "keyword": len(master)}
+    pn = max(pc["n"], 1)
+    chips = "".join(
+        f'<div class="ts-chip" title="{k:,} records · {round(100 * k / pn)}% · {tip}">'
+        f'<div class="ts-chip-v"><span style="color:{col}">●</span> {k:,}</div>'
+        f'<div class="ts-chip-l">{name} <b>{round(100 * k / pn)}%</b></div></div>'
+        for name, k, col, tip in (("Human", pc["human"], "#00D09C", "Human-reviewed"),
+                                  ("AI", pc["ai"], "#6366F1", "AI-labelled"),
+                                  ("Keyword", pc["keyword"], "#1E293B", "Keyword-tagged")))
+    # Source split: Play Store reviews are split into Google Play and Apple App Store by their review link
+    plat = master["Source Platform"].astype(str) if "Source Platform" in master else pd.Series(dtype=str)
+    url = master["Source URL"].astype(str).str.lower() if "Source URL" in master else pd.Series("", index=plat.index)
+    store = plat.eq("Play Store")
+    apple = int((store & url.str.contains("apps.apple.com|itunes.apple.com", regex=True)).sum())
+    google = int(store.sum()) - apple
+    src_items = [("Google", "Google Play Store", google, "#00D09C"), ("Apple", "Apple App Store", apple, "#7FE3C9"),
+                 ("Reddit", "Reddit", int(plat.eq("Reddit").sum()), "#1B365D"),
+                 ("YouTube", "YouTube", int(plat.eq("YouTube").sum()), "#94A3B8")]
+    src_legend = "".join(
+        f'<span class="ts-src-i" title="{full}: {k:,} reviews ({round(100 * k / max(total, 1))}%)">'
+        f'<i style="background:{col}"></i><b>{k:,}</b> {short}</span>' for short, full, k, col in src_items)
     card1 = (f'<div class="ts-card accent"><div class="ts-label">Total Reviews Extracted</div>'
-             f'<div class="ts-main"><span class="ts-value">{total:,}</span>{_ts_ring(counts, total)}</div>'
-             f'<div class="ts-mid"><div class="ts-src">{src_icons}</div></div>'
-             f'<div class="ts-foot" title="{esc(caption1)}"><span class="full">{esc(caption1)}</span>'
-             f'<span class="short">{esc(caption1_short)}</span></div></div>')
+             f'<div class="ts-main"><span class="ts-value">{total:,}</span><div class="ts-src-grid">{src_legend}</div></div>'
+             f'<div class="ts-chips">{chips}</div></div>')
 
     # Card 2 · Product split
     groww = int((master["Product"] == "Groww").sum()) if "Product" in master else 0
@@ -2089,7 +2256,7 @@ def render_top_shelf(master: pd.DataFrame, info: dict, golden: pd.DataFrame | No
              f'<div class="ts-mid">{spark}</div>'
              f'<div class="ts-foot" title="{esc(foot4)}">{esc(foot4)}</div></div>')
 
-    st.markdown(TOP_SHELF_CSS + f'<div class="ts-grid">{card1}{card2}{card3}{card4}</div>', unsafe_allow_html=True)
+    st.markdown(TOP_SHELF_CSS + f'<div class="ts-wrap"><div class="ts-grid">{card1}{card2}{card3}{card4}</div></div>', unsafe_allow_html=True)
 
 
 render_top_shelf(df_master, master_info, df_golden)
@@ -2323,52 +2490,54 @@ else:
 # Filters
 # ---------------------------------------------------------------------------
 chat_data = df_all  # Ask AI always answers from the validated set (it relies on its root-cause labels)
-st.markdown(f"<h3 style='color:{NAVY};margin-bottom:4px'>Discovery Filters</h3>", unsafe_allow_html=True)
-view_mode = st.radio("View Mode", [VIEW_FULL, VIEW_DEEP], index=0, horizontal=True, key="view_mode")
-if view_mode == VIEW_FULL and len(df_master):
-    df_all = build_full_view(df_master, df_golden)
-    st.caption("Full view: validated rows keep their labels. Other rows are auto-tagged from keywords (theme, emotion and "
-               "preventability are inferred, not validated); the Label Source column shows each row's provenance. Tenure is only shown where stated.")
-df_all = df_all.copy()
-# Columns actually present in the dataset drive what the table shows; any schema
-# column that is missing is added as empty so metrics, charts and export never crash.
-display_cols = [c for c in ec.COLUMNS if c in df_all.columns] + [c for c in ("Year", "Label Source") if c in df_all.columns]
-for col in ec.COLUMNS:
-    if col not in df_all.columns:
-        df_all[col] = pd.NA
-df_all["Source Platform"] = df_all["Source Platform"].map(normalize_platform)
-df_all["Churn Preventability"] = df_all["Churn Preventability"].map(ec.normalize_preventability)
-df_all["Problem Theme"] = df_all["Problem Theme"].map(lambda v: ec.normalize_theme(v) if pd.notna(v) else v)
-df_all["SIP Tenure (Months)"] = pd.to_numeric(df_all["SIP Tenure (Months)"].map(ec.parse_tenure), errors="coerce").astype("Int64")
-df_all["Tenure Band"] = df_all["SIP Tenure (Months)"].map(ec.tenure_band)
-df_all["Lifecycle Stage"] = df_all["Original Comment"].map(infer_lifecycle_stage)
-df_all = impute_missing_labels(df_all)  # also covers the Validated view
-df_all = ensure_label_source(df_all, SRC_HUMAN if view_mode == VIEW_DEEP else SRC_KEYWORD)
-if "Label Source" not in display_cols:
-    display_cols.append("Label Source")
-if "Year" in df_all.columns:
-    df_all["Year"] = pd.to_numeric(df_all["Year"], errors="coerce").astype("Int64")
-display_cols.append("Lifecycle Stage")
+with _keyed_container("control_strip"):
+    st.markdown(f"<h3 class='strip-title' style='color:{NAVY};margin-bottom:4px'>Discovery Filters</h3>", unsafe_allow_html=True)
+    view_mode = st.radio("View Mode", [VIEW_FULL, VIEW_DEEP], index=0, horizontal=True, key="view_mode")
+    if view_mode == VIEW_FULL and len(df_master):
+        df_all = build_full_view(df_master, df_golden)
+        st.caption("Full view: validated rows keep their labels. Other rows are auto-tagged from keywords (theme, emotion and "
+                   "preventability are inferred, not validated); the Label Source column shows each row's provenance. Tenure is only shown where stated.")
+    df_all = df_all.copy()
+    # Columns actually present in the dataset drive what the table shows; any schema
+    # column that is missing is added as empty so metrics, charts and export never crash.
+    display_cols = [c for c in ec.COLUMNS if c in df_all.columns] + [c for c in ("Year", "Label Source") if c in df_all.columns]
+    for col in ec.COLUMNS:
+        if col not in df_all.columns:
+            df_all[col] = pd.NA
+    df_all["Source Platform"] = df_all["Source Platform"].map(normalize_platform)
+    df_all["Churn Preventability"] = df_all["Churn Preventability"].map(ec.normalize_preventability)
+    df_all["Problem Theme"] = df_all["Problem Theme"].map(lambda v: ec.normalize_theme(v) if pd.notna(v) else v)
+    df_all["SIP Tenure (Months)"] = pd.to_numeric(df_all["SIP Tenure (Months)"].map(ec.parse_tenure), errors="coerce").astype("Int64")
+    df_all["Tenure Band"] = df_all["SIP Tenure (Months)"].map(ec.tenure_band)
+    df_all["Lifecycle Stage"] = df_all["Original Comment"].map(infer_lifecycle_stage)
+    df_all = impute_missing_labels(df_all)  # also covers the Validated view
+    df_all = ensure_label_source(df_all, SRC_HUMAN if view_mode == VIEW_DEEP else SRC_KEYWORD)
+    if "Label Source" not in display_cols:
+        display_cols.append("Label Source")
+    if "Year" in df_all.columns:
+        df_all["Year"] = pd.to_numeric(df_all["Year"], errors="coerce").astype("Int64")
+    display_cols.append("Lifecycle Stage")
 
-band_order = [b[0] for b in ec.TENURE_BANDS] + ["Not stated"]
-present = lambda col, order: [x for x in order if x in set(df_all[col].dropna())]  # noqa: E731
+    band_order = [b[0] for b in ec.TENURE_BANDS] + ["Not stated"]
+    present = lambda col, order: [x for x in order if x in set(df_all[col].dropna())]  # noqa: E731
 
-f0, f1, f2, f3, f4, f5 = st.columns(6)
-sel_src = f0.multiselect("Source", present("Source Platform", PLATFORMS), placeholder="All sources", key="f_src")
-sel_theme = f1.multiselect("Problem Theme", present("Problem Theme", ec.THEMES + ["Unclassified"]),
-                           placeholder="All 8 drivers", key="f_theme")
-sel_band = f2.multiselect("SIP Tenure", present("Tenure Band", band_order), placeholder="All tenures", key="f_band")
-_stage_opts = present("SIP Stage", ec.STAGES + ["Unknown Stage"])
-_stage_opts += sorted(str(x) for x in set(df_all["SIP Stage"].dropna()) if x not in _stage_opts)
-sel_stage = f3.multiselect("SIP Stage", _stage_opts, placeholder="All stages", key="f_stage")
-_prev_opts = present("Churn Preventability", ec.PREVENTABILITY_LEVELS)
-_prev_opts += sorted(str(x) for x in set(df_all["Churn Preventability"].dropna()) if str(x) not in _prev_opts)
-sel_prev = f4.multiselect("Churn Preventability", _prev_opts,
-                          placeholder="All levels", key="f_prev")
-_year_opts = (sorted({int(y) for y in df_all["Year"].dropna()}, reverse=True) if "Year" in df_all.columns else [])
-sel_year = f5.multiselect("Year", _year_opts, placeholder="All years", key="f_year")
+    f0, f1, f2, f3, f4, f5 = st.columns(6)
+    sel_src = f0.multiselect("Source", present("Source Platform", PLATFORMS), placeholder="All sources", key="f_src")
+    sel_theme = f1.multiselect("Problem Theme", present("Problem Theme", ec.THEMES + ["Unclassified"]),
+                               placeholder="All 8 drivers", key="f_theme")
+    sel_band = f2.multiselect("SIP Tenure", present("Tenure Band", band_order), placeholder="All tenures", key="f_band")
+    _stage_opts = present("SIP Stage", ec.STAGES + ["Unknown Stage"])
+    _stage_opts += sorted(str(x) for x in set(df_all["SIP Stage"].dropna()) if x not in _stage_opts)
+    sel_stage = f3.multiselect("SIP Stage", _stage_opts, placeholder="All stages", key="f_stage")
+    _prev_opts = present("Churn Preventability", ec.PREVENTABILITY_LEVELS)
+    _prev_opts += sorted(str(x) for x in set(df_all["Churn Preventability"].dropna()) if str(x) not in _prev_opts)
+    sel_prev = f4.multiselect("Churn Preventability", _prev_opts,
+                              placeholder="All levels", key="f_prev")
+    _year_opts = (sorted({int(y) for y in df_all["Year"].dropna()}, reverse=True) if "Year" in df_all.columns else [])
+    sel_year = f5.multiselect("Year", _year_opts, placeholder="All years", key="f_year")
 
 render_chat(chat_data)
+
 
 df = df_all
 if sel_src:
@@ -2441,11 +2610,12 @@ def render_evidence(view: pd.DataFrame, k: int = 6) -> None:
                    "Some non-English comments couldn't be translated right now; the app will try again in a few minutes.")
 
 
+PLOT_FONT = '-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif'
 PLOT_LAYOUT = dict(
-    font=dict(family="Inter, Arial, sans-serif", color=NAVY, size=13),
-    plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
+    font=dict(family=PLOT_FONT, color="#0F172A", size=13),
+    plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     margin=dict(l=10, r=10, t=60, b=10),
-    hoverlabel=dict(bgcolor="#FFFFFF", font_size=13),
+    hoverlabel=dict(bgcolor="#FFFFFF", bordercolor="#E2E8F0", font_size=13, font_family=PLOT_FONT),
 )
 
 
@@ -2584,15 +2754,19 @@ EVAL_CSS = """
 .eval-gate-title { font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 2px 0; }
 .eval-gate-sub { font-size: 0.86rem; color: #475467; margin: 0 0 10px 0; }
 .st-key-eval_cta button { animation: eval-pulse-glow 2s infinite; border: 2px solid #00D09C !important;
-    font-weight: 700 !important; color: #FFFFFF !important; border-radius: 12px !important; min-height: 48px;
+    font-weight: 700 !important; color: #FFFFFF !important; border-radius: 999px !important; min-height: 48px;
     background: linear-gradient(110deg, #00B386 0%, #00D09C 40%, #5EEAD4 50%, #00D09C 60%, #00B386 100%) !important;
     background-size: 200% 100% !important; animation: eval-pulse-glow 2s infinite, eval-shimmer 3.5s linear infinite; }
 .st-key-eval_cta button:hover { filter: brightness(1.05); transform: translateY(-1px); }
-.st-key-eval_cta_open button, .st-key-evid_cta_open button { border-radius: 12px !important; min-height: 48px;
+.st-key-eval_cta_open button, .st-key-evid_cta_open button { border-radius: 999px !important; min-height: 48px;
     border: 1px solid #D0D5DD !important; color: #344054 !important; background: #FFFFFF !important; font-weight: 600 !important; }
-.st-key-evid_cta button { border-radius: 12px !important; min-height: 48px; font-weight: 700 !important;
-    border: 2px solid #1B365D !important; color: #1B365D !important; background: #FFFFFF !important; transition: all .2s ease; }
-.st-key-evid_cta button:hover { background: #F0F5FF !important; transform: translateY(-1px); }
+.st-key-evid_cta button { border-radius: 999px !important; min-height: 48px; font-weight: 700 !important;
+    border: none !important; color: #FFFFFF !important; transition: all .2s ease;
+    background: linear-gradient(110deg, #0C6478 0%, #15919B 55%, #09D1C7 100%) !important;
+    box-shadow: 0 4px 14px rgba(12, 100, 120, 0.25); }
+.st-key-evid_cta button p { color: #FFFFFF !important; font-weight: 700 !important; }
+.st-key-evid_cta button:hover { filter: brightness(1.07); transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(12, 100, 120, 0.30); }
 .st-key-evidence_shelf { background: #FFFFFF; border: 1px solid #EAECF0; border-radius: 14px; padding: 6px 18px 12px 18px;
     margin: 4px 0 12px 0; box-shadow: 0 1px 3px rgba(16, 24, 40, .05); animation: shelf-in .25s ease-out; }
 @keyframes shelf-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
@@ -2629,10 +2803,15 @@ EVAL_CSS = """
 .ev-tbl td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ev-tbl .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
 .ev-tbl .bar { position: relative; height: 8px; border-radius: 999px; background: #EEF1F5; min-width: 70px; }
-.ev-tbl .bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: #00D09C; }
+.ev-tbl .bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px;
+                    background: linear-gradient(90deg, #46DFB1 0%, #00D09C 100%); }
 .ev-tbl .chip { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
-.chip.ux { color: #FFFFFF; background: #1B365D; } .chip.nudge { color: #00563F; background: rgba(0, 208, 156, .2); }
-.chip.edu { color: #1E3A8A; background: #E0EAFF; } .chip.low { color: #475467; background: #F2F4F7; }
+.ev-tbl .chip.ux, .ev-tbl .chip.nudge, .ev-tbl .chip.edu, .ev-tbl .chip.low { font-weight: 700; padding: 3px 10px;
+    border: 1px solid transparent; letter-spacing: .01em; }
+.chip.ux { color: #FFFFFF; background: #213A58; border-color: #213A58 !important; }
+.chip.nudge { color: #FFFFFF; background: #0C6478; border-color: #0C6478 !important; }
+.chip.edu { color: #1E3A8A; background: #DBE7FF; border-color: #B4CCFF !important; }
+.chip.low { color: #334155; background: #E2E8F0; border-color: #CBD5E1 !important; }
 .tbl-title { font-weight: 700; color: #0F172A; margin: 14px 0 2px 0; font-size: 0.98rem; }
 .tbl-sub { font-size: 12px; color: #667085; margin-bottom: 4px; }
 @media (max-width: 1000px) { .ins-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -2651,6 +2830,22 @@ def _ev_esc(x) -> str:
     return html.escape(str(x), quote=True)
 
 
+FINTECH_GRADIENT = ["#80EE98", "#46DFB1", "#09D1C7", "#15919B", "#0C6478", "#213A58"]
+
+
+def _gradient_by_rank(values) -> list[str]:
+    """Maps values onto the 6-step FinTech gradient by rank: the largest bar gets the deepest shade."""
+    vals = list(values)
+    if not vals:
+        return []
+    order = sorted(range(len(vals)), key=lambda k: vals[k])  # smallest first
+    steps = len(FINTECH_GRADIENT) - 1
+    out = [""] * len(vals)
+    for rank, k in enumerate(order):
+        out[k] = FINTECH_GRADIENT[round(rank * steps / max(len(vals) - 1, 1))]
+    return out
+
+
 def _quick_read(text_html: str) -> None:
     """Short executive takeaway shown above a chart. `text_html` is trusted markup built from escaped values."""
     st.markdown(f'<div class="qr"><span class="qr-tag">⚡ Quick Read</span><div class="qr-t">{text_html}</div></div>',
@@ -2665,6 +2860,18 @@ def _ev_top(series: pd.Series, exclude=()) -> tuple[str, int]:
     vc = series.dropna().astype(str).value_counts()
     vc = vc[~vc.index.isin(list(exclude))]
     return (str(vc.index[0]), int(vc.iloc[0])) if len(vc) else ("—", 0)
+
+
+_EMOTION_TONES = {"frustration": "frustration", "confusion": "confusion", "panic/fear": "panic", "panic & fear": "panic",
+                  "fear of penalty": "penalty", "fear of bank penalty": "penalty", "anxiety/stress": "anxiety",
+                  "anxiety & stress": "anxiety", "anxiety / frustration": "anxiety", "distrust": "distrust",
+                  "fomo": "fomo", "disillusionment": "disillusion"}
+
+
+def _emotion_chip(value) -> str:
+    """Soft-tint pill with bold coloured text, one tone per emotion (rose/red reserved for panic and penalty risk)."""
+    v = str(value)
+    return f'<span class="chip emo {_EMOTION_TONES.get(v.strip().lower(), "neutral")}">{_ev_esc(v)}</span>'
 
 
 def _driver_table(df: pd.DataFrame, summary: dict) -> str:
@@ -2684,7 +2891,7 @@ def _driver_table(df: pd.DataFrame, summary: dict) -> str:
             f'<td class="num hide-sm">{int(t["Records"]):,}</td>'
             f'<td class="num">{float(t["Share"]):.0%}</td>'
             f'<td class="hide-sm" style="width:16%"><div class="bar"><span style="width:{width:.0f}%"></span></div></td>'
-            f'<td class="hide-sm">{_ev_esc(t["Dominant Emotion"])}</td>'
+            f'<td class="hide-sm">{_emotion_chip(t["Dominant Emotion"])}</td>'
             f'<td class="hide-sm">{_ev_esc(stage)}</td>'
             f'<td class="num">{float(t["Addressable Share"]):.0%}</td>'
             f'<td><span class="chip {cls}">{_ev_esc(lever)}</span></td></tr>')
@@ -2705,9 +2912,9 @@ def _stage_table(df: pd.DataFrame) -> str:
         drv, dn = _ev_top(sub["Problem Theme"][sub["Problem Theme"].isin(ec.THEMES)])
         emo, _ = _ev_top(sub["Investor Emotional Trigger"])
         rows.append(f'<tr><td><b>{_ev_esc(stg)}</b></td><td class="num">{len(sub):,}</td>'
-                    f'<td class="num">{_ev_pct(len(sub), total)}</td><td>{_ev_esc(drv)} '
-                    f'<span style="color:#667085">({_ev_pct(dn, len(sub))})</span></td>'
-                    f'<td class="hide-sm">{_ev_esc(emo)}</td></tr>')
+                    f'<td class="num">{_ev_pct(len(sub), total)}</td><td><span class="chip theme">{_ev_esc(drv)}</span> '
+                    f'<span style="color:#94A3B8">({_ev_pct(dn, len(sub))})</span></td>'
+                    f'<td class="hide-sm">{_emotion_chip(emo)}</td></tr>')
     return ('<table class="ev-tbl"><thead><tr><th>Lifecycle stage</th><th style="text-align:right">Records</th>'
             '<th style="text-align:right">Share</th><th>Top driver in stage</th><th class="hide-sm">Top emotion</th>'
             '</tr></thead><tbody>' + "".join(rows) + "</tbody></table>")
@@ -2803,54 +3010,58 @@ def render_evaluator_dashboard(df: pd.DataFrame, summary: dict) -> None:
         top_life, second = ranked.index[0], ranked.index[1]
         ratio = ranked.iloc[0] / ranked.iloc[1] if ranked.iloc[1] else None
         drv, dn = _ev_top(df.loc[df["Lifecycle Stage"] == top_life, "Problem Theme"].pipe(lambda s: s[s.isin(ec.THEMES)]))
-        _quick_read(f"<b>{_ev_esc(top_life)}</b> holds {_ev_pct(ranked.iloc[0], len(df))} of friction"
-                    + (f", {ratio:.1f}× the next stage ({_ev_esc(second)})" if ratio else "")
-                    + f". Inside it, <b>{_ev_esc(drv)}</b> is the top driver ({_ev_pct(dn, ranked.iloc[0])} of that stage).")
-        life_share = life_counts / max(int(life_counts.sum()), 1)
-        life_driver = []
-        for stg in life_order:
-            sub = df.loc[(df["Lifecycle Stage"] == stg) & df["Problem Theme"].isin(ec.THEMES), "Problem Theme"]
-            life_driver.append(sub.value_counts().index[0] if len(sub) else "—")
-        plot_order = life_order[::-1]
-        idx = [life_order.index(x) for x in plot_order]
-        fig1 = go.Figure(go.Bar(
-            y=plot_order, x=[int(life_counts[x]) for x in plot_order], orientation="h",
-            marker=dict(color=[EMERALD if s == top_life else ("#CBD5E1" if s == LIFECYCLE_OTHER else "#0F172A")
-                               for s in plot_order], line=dict(width=0)),
-            text=[f"{int(life_counts[x]):,} · {life_share[x]:.0%}" for x in plot_order], textposition="outside",
-            cliponaxis=False, customdata=[[f"{life_share[x]:.1%}", life_driver[k]] for x, k in zip(plot_order, idx)],
-            hovertemplate="<b>%{y}</b><br>%{x:,} records (%{customdata[0]} of view)"
-                          "<br>Top driver here: %{customdata[1]}<extra></extra>"))
-        fig1.update_layout(**PLOT_LAYOUT, height=360, bargap=0.35,
-                           title=dict(text="<b>Chart 1 · SIP Friction by Lifecycle Stage</b><br>"
-                                           "<span style='font-size:12px;color:#5A6B82'>Where in the SIP journey investors hit "
-                                           "friction · stage inferred from each comment · hover for the top driver</span>"),
-                           xaxis=dict(title="Records", gridcolor="#EEF1F5", range=[0, life_counts.max() * 1.22]),
-                           yaxis=dict(title="", tickfont=dict(size=13, color="#0F172A")))
-        stretch(st.plotly_chart, fig1, config={"displayModeBar": False})
-        st.markdown('<div class="tbl-title">Lifecycle stage breakdown</div>' + _stage_table(df), unsafe_allow_html=True)
+        with _keyed_container("chart_box_1"):
+            _quick_read(f"<b>{_ev_esc(top_life)}</b> holds {_ev_pct(ranked.iloc[0], len(df))} of friction"
+                        + (f", {ratio:.1f}× the next stage ({_ev_esc(second)})" if ratio else "")
+                        + f". Inside it, <b>{_ev_esc(drv)}</b> is the top driver ({_ev_pct(dn, ranked.iloc[0])} of that stage).")
+            life_share = life_counts / max(int(life_counts.sum()), 1)
+            life_driver = []
+            for stg in life_order:
+                sub = df.loc[(df["Lifecycle Stage"] == stg) & df["Problem Theme"].isin(ec.THEMES), "Problem Theme"]
+                life_driver.append(sub.value_counts().index[0] if len(sub) else "—")
+            plot_order = life_order[::-1]
+            idx = [life_order.index(x) for x in plot_order]
+            fig1 = go.Figure(go.Bar(
+                y=plot_order, x=[int(life_counts[x]) for x in plot_order], orientation="h",
+                marker=dict(color=[EMERALD if s == top_life else ("#CBD5E1" if s == LIFECYCLE_OTHER else "#0F172A")
+                                   for s in plot_order], line=dict(width=0)),
+                text=[f"{int(life_counts[x]):,} · {life_share[x]:.0%}" for x in plot_order], textposition="outside",
+                cliponaxis=False, customdata=[[f"{life_share[x]:.1%}", life_driver[k]] for x, k in zip(plot_order, idx)],
+                hovertemplate="<b>%{y}</b><br>%{x:,} records (%{customdata[0]} of view)"
+                              "<br>Top driver here: %{customdata[1]}<extra></extra>"))
+            fig1.update_layout(**PLOT_LAYOUT, height=360, bargap=0.35,
+                               title=dict(text="<b>Chart 1 · SIP Friction by Lifecycle Stage</b><br>"
+                                               "<span style='font-size:12px;color:#64748B'>Where in the SIP journey investors hit "
+                                               "friction · stage inferred from each comment · hover for the top driver</span>"),
+                               xaxis=dict(title="Records", gridcolor="#F1F5F9", range=[0, life_counts.max() * 1.22]),
+                               yaxis=dict(title="", tickfont=dict(size=13, color="#0F172A")))
+            stretch(st.plotly_chart, fig1, config={"displayModeBar": False})
+            st.markdown('<div class="tbl-title">Lifecycle stage breakdown</div>' + _stage_table(df), unsafe_allow_html=True)
 
     # Chart 2 — driver breakdown + scorecard
     top3 = summary["themes"].head(3)
     t0 = summary["themes"].iloc[0]
-    _quick_read(f"The top 3 drivers ({', '.join(_ev_esc(x) for x in top3['Problem Theme'])}) account for "
-                f"<b>{float(top3['Share'].sum()):.0%}</b> of records. <b>{_ev_esc(t0['Problem Theme'])}</b> leads at "
-                f"{float(t0['Share']):.0%}, mostly expressed as {_ev_esc(str(t0['Dominant Emotion']).lower())}.")
-    fig2 = go.Figure(go.Bar(
-        y=themes["Problem Theme"], x=themes["Share"], orientation="h",
-        marker_color=[THEME_COLORS.get(t, NAVY) for t in themes["Problem Theme"]],
-        text=[f"{s:.0%}" for s in themes["Share"]], textposition="outside", cliponaxis=False,
-        customdata=themes[["Records", "Dominant Emotion"]].values,
-        hovertemplate="<b>%{y}</b><br>Share: %{x:.1%}<br>Records: %{customdata[0]}"
-                      "<br>Dominant emotion: %{customdata[1]}<extra></extra>"))
-    fig2.update_layout(**PLOT_LAYOUT, height=400,
-                       title=dict(text="<b>Chart 2 · Root-Cause Driver Breakdown</b><br><span style='font-size:12px;"
-                                       "color:#5A6B82'>% share of churn records · hover for records & dominant emotion</span>"),
-                       xaxis=dict(tickformat=".0%", gridcolor="#EEF1F5", range=[0, themes["Share"].max() * 1.25]),
-                       yaxis=dict(title=""))
-    stretch(st.plotly_chart, fig2, config={"displayModeBar": False})
-    st.markdown('<div class="tbl-title">Driver scorecard</div><div class="tbl-sub">Primary lever = the most common '
-                'preventability level for that driver</div>' + _driver_table(df, summary), unsafe_allow_html=True)
+    with _keyed_container("chart_box_2"):
+        _quick_read(f"The top 3 drivers ({', '.join(_ev_esc(x) for x in top3['Problem Theme'])}) account for "
+                    f"<b>{float(top3['Share'].sum()):.0%}</b> of records. <b>{_ev_esc(t0['Problem Theme'])}</b> leads at "
+                    f"{float(t0['Share']):.0%}, mostly expressed as {_ev_esc(str(t0['Dominant Emotion']).lower())}.")
+        fig2 = go.Figure(go.Bar(
+            y=themes["Problem Theme"], x=themes["Share"], orientation="h",
+            marker=dict(color=_gradient_by_rank(themes["Records"]), line=dict(width=0)),
+            text=[f"{int(r):,} · {s:.0%}" for r, s in zip(themes["Records"], themes["Share"])],
+            textposition="outside", cliponaxis=False, textfont=dict(color="#0F172A", size=12),
+            customdata=themes[["Records", "Dominant Emotion"]].values,
+            hovertemplate="<b>%{y}</b><br>Share: %{x:.1%}<br>Records: %{customdata[0]}"
+                          "<br>Dominant emotion: %{customdata[1]}<extra></extra>"))
+        fig2.update_layout(**PLOT_LAYOUT, height=400,
+                           title=dict(text="<b>Chart 2 · Root-Cause Driver Breakdown</b><br><span style='font-size:12px;"
+                                           "color:#64748B'>% share of churn records · hover for records & dominant emotion</span>"),
+                           xaxis=dict(tickformat=".0%", gridcolor="#F1F5F9", range=[0, themes["Share"].max() * 1.25]),
+                           yaxis=dict(title=""))
+        fig2.update_layout(meta={"label_color": "#0F172A"})  # high-contrast driver and axis labels
+        stretch(st.plotly_chart, fig2, config={"displayModeBar": False})
+        st.markdown('<div class="tbl-title">Driver scorecard</div><div class="tbl-sub">Primary lever = the most common '
+                    'preventability level for that driver</div>' + _driver_table(df, summary), unsafe_allow_html=True)
 
     # Chart 3 — preventability donut + by driver
     if prev_counts.empty:
@@ -2862,68 +3073,70 @@ def render_evaluator_dashboard(df: pd.DataFrame, summary: dict) -> None:
         ux_by = ux_by[df["Problem Theme"].value_counts().reindex(ux_by.index).fillna(0) >= 5].sort_values(ascending=False)
         ux_txt = (f" Drivers most fixable through product changes: <b>{_ev_esc(', '.join(ux_by.head(2).index))}</b>."
                   if len(ux_by) else "")
-        _quick_read(f"<b>{assessed_share:.0%}</b> of assessed cases are addressable. The largest bucket is "
-                    f"<b>{_ev_esc(_LEVER[lead_lvl][0])}</b> ({_ev_pct(int(prev_counts.max()), int(prev_counts.sum()))})." + ux_txt)
-        p_left, p_right = st.columns([2, 3])
-        with p_left:
-            fig3 = go.Figure(go.Pie(
-                labels=prev_counts.index, values=prev_counts.values, hole=0.62, sort=False,
-                marker=dict(colors=[PREVENT_COLORS[l] for l in prev_counts.index], line=dict(color="#FFFFFF", width=2)),
-                textinfo="percent", hovertemplate="%{label}<br>%{value} records (%{percent})<extra></extra>"))
-            fig3.add_annotation(text=f"<b>{assessed_share:.0%}</b><br><span style='font-size:12px'>addressable</span>",
-                                showarrow=False, font=dict(size=26, color=NAVY))
-            fig3.update_layout(**PLOT_LAYOUT, height=400, showlegend=True,
-                               legend=dict(orientation="h", y=-0.12, font=dict(size=11)),
-                               title=dict(text="<b>Chart 3 · Churn Preventability</b>"))
-            stretch(st.plotly_chart, fig3, config={"displayModeBar": False})
-        with p_right:
-            cross = df.groupby(["Problem Theme", "Churn Preventability"]).size().reset_index(name="Records")
-            fig4 = px.bar(cross, x="Records", y="Problem Theme", color="Churn Preventability", orientation="h",
-                          color_discrete_map=PREVENT_COLORS,
-                          category_orders={"Churn Preventability": ec.PREVENTABILITY_LEVELS,
-                                           "Problem Theme": list(themes["Problem Theme"])[::-1]})
-            fig4.update_layout(**PLOT_LAYOUT, height=400, barmode="stack",
-                               title=dict(text="<b>Preventability by driver</b><br><span style='font-size:12px;color:#5A6B82'>"
-                                               "Where Product/UX fixes vs. nudges vs. education apply</span>"),
-                               legend=dict(orientation="h", y=-0.15, title="", font=dict(size=11)),
-                               xaxis=dict(gridcolor="#EEF1F5"), yaxis=dict(title=""))
-            stretch(st.plotly_chart, fig4, config={"displayModeBar": False})
+        with _keyed_container("chart_box_3"):
+            _quick_read(f"<b>{assessed_share:.0%}</b> of assessed cases are addressable. The largest bucket is "
+                        f"<b>{_ev_esc(_LEVER[lead_lvl][0])}</b> ({_ev_pct(int(prev_counts.max()), int(prev_counts.sum()))})." + ux_txt)
+            p_left, p_right = st.columns([2, 3])
+            with p_left:
+                fig3 = go.Figure(go.Pie(
+                    labels=prev_counts.index, values=prev_counts.values, hole=0.62, sort=False,
+                    marker=dict(colors=[PREVENT_COLORS[l] for l in prev_counts.index], line=dict(color="#FFFFFF", width=2)),
+                    textinfo="percent", hovertemplate="%{label}<br>%{value} records (%{percent})<extra></extra>"))
+                fig3.add_annotation(text=f"<b>{assessed_share:.0%}</b><br><span style='font-size:12px'>addressable</span>",
+                                    showarrow=False, font=dict(size=26, color=NAVY))
+                fig3.update_layout(**PLOT_LAYOUT, height=400, showlegend=True,
+                                   legend=dict(orientation="h", y=-0.12, font=dict(size=11)),
+                                   title=dict(text="<b>Chart 3 · Churn Preventability</b>"))
+                stretch(st.plotly_chart, fig3, config={"displayModeBar": False})
+            with p_right:
+                cross = df.groupby(["Problem Theme", "Churn Preventability"]).size().reset_index(name="Records")
+                fig4 = px.bar(cross, x="Records", y="Problem Theme", color="Churn Preventability", orientation="h",
+                              color_discrete_map=PREVENT_COLORS,
+                              category_orders={"Churn Preventability": ec.PREVENTABILITY_LEVELS,
+                                               "Problem Theme": list(themes["Problem Theme"])[::-1]})
+                fig4.update_layout(**PLOT_LAYOUT, height=400, barmode="stack",
+                                   title=dict(text="<b>Preventability by driver</b><br><span style='font-size:12px;color:#64748B'>"
+                                                   "Where Product/UX fixes vs. nudges vs. education apply</span>"),
+                                   legend=dict(orientation="h", y=-0.15, title="", font=dict(size=11)),
+                                   xaxis=dict(gridcolor="#F1F5F9"), yaxis=dict(title=""))
+                stretch(st.plotly_chart, fig4, config={"displayModeBar": False})
 
     # Chart 4 — lifecycle stage × driver, Chart 5 — emotions
     stage_cross = (df[df["Problem Theme"].isin(ec.THEMES) & (df["Lifecycle Stage"] != LIFECYCLE_OTHER)]
                    .groupby(["Lifecycle Stage", "Problem Theme"]).size().reset_index(name="Records"))
     emo = _assessed_emotions(df).value_counts()
-    if len(stage_cross):
-        cell = stage_cross.sort_values("Records", ascending=False).iloc[0]
-        txt4 = (f"The single biggest hotspot is <b>{_ev_esc(cell['Problem Theme'])}</b> during "
-                f"<b>{_ev_esc(cell['Lifecycle Stage'])}</b> ({int(cell['Records']):,} records, "
-                f"{_ev_pct(int(cell['Records']), len(df))} of view).")
-        if len(emo) >= 2:
-            txt4 += (f" <b>{_ev_esc(emo.index[0])}</b> and <b>{_ev_esc(emo.index[1])}</b> make up "
-                     f"{_ev_pct(int(emo.iloc[:2].sum()), int(emo.sum()))} of expressed emotion.")
-        _quick_read(txt4)
-    s_left, s_right = st.columns([3, 2])
-    with s_left:
-        fig5 = px.bar(stage_cross, x="Lifecycle Stage", y="Records", color="Problem Theme",
-                      color_discrete_map=THEME_COLORS,
-                      category_orders={"Lifecycle Stage": LIFECYCLE_STAGES, "Problem Theme": ec.THEMES})
-        fig5.update_layout(**PLOT_LAYOUT, height=420, barmode="stack",
-                           title=dict(text="<b>Chart 4 · When each driver strikes</b><br><span style='font-size:12px;"
-                                           "color:#5A6B82'>Records by lifecycle stage and driver</span>"),
-                           legend=dict(title="", font=dict(size=11)),
-                           xaxis=dict(title=""), yaxis=dict(gridcolor="#EEF1F5"))
-        stretch(st.plotly_chart, fig5, config={"displayModeBar": False})
-    with s_right:
-        emo8 = emo.head(8).sort_values()
-        fig6 = go.Figure(go.Bar(
-            y=emo8.index, x=emo8.values, orientation="h",
-            marker_color=[EMERALD if v == emo8.max() else "#1E293B" for v in emo8.values],
-            hovertemplate="%{y}: %{x} records<extra></extra>"))
-        fig6.update_layout(**PLOT_LAYOUT, height=420,
-                           title=dict(text="<b>Chart 5 · Investor emotional triggers</b><br><span style='font-size:12px;"
-                                           "color:#5A6B82'>Most frequent emotions expressed by churners</span>"),
-                           xaxis=dict(title="Records", gridcolor="#EEF1F5"), yaxis=dict(title=""))
-        stretch(st.plotly_chart, fig6, config={"displayModeBar": False})
+    with _keyed_container("chart_box_4"):
+        if len(stage_cross):
+            cell = stage_cross.sort_values("Records", ascending=False).iloc[0]
+            txt4 = (f"The single biggest hotspot is <b>{_ev_esc(cell['Problem Theme'])}</b> during "
+                    f"<b>{_ev_esc(cell['Lifecycle Stage'])}</b> ({int(cell['Records']):,} records, "
+                    f"{_ev_pct(int(cell['Records']), len(df))} of view).")
+            if len(emo) >= 2:
+                txt4 += (f" <b>{_ev_esc(emo.index[0])}</b> and <b>{_ev_esc(emo.index[1])}</b> make up "
+                         f"{_ev_pct(int(emo.iloc[:2].sum()), int(emo.sum()))} of expressed emotion.")
+            _quick_read(txt4)
+        s_left, s_right = st.columns([3, 2])
+        with s_left:
+            fig5 = px.bar(stage_cross, x="Lifecycle Stage", y="Records", color="Problem Theme",
+                          color_discrete_map=THEME_COLORS,
+                          category_orders={"Lifecycle Stage": LIFECYCLE_STAGES, "Problem Theme": ec.THEMES})
+            fig5.update_layout(**PLOT_LAYOUT, height=420, barmode="stack",
+                               title=dict(text="<b>Chart 4 · When each driver strikes</b><br><span style='font-size:12px;"
+                                               "color:#64748B'>Records by lifecycle stage and driver</span>"),
+                               legend=dict(title="", font=dict(size=11)),
+                               xaxis=dict(title=""), yaxis=dict(gridcolor="#F1F5F9"))
+            stretch(st.plotly_chart, fig5, config={"displayModeBar": False})
+        with s_right:
+            emo8 = emo.head(8).sort_values()
+            fig6 = go.Figure(go.Bar(
+                y=emo8.index, x=emo8.values, orientation="h",
+                marker_color=[EMERALD if v == emo8.max() else "#1E293B" for v in emo8.values],
+                hovertemplate="%{y}: %{x} records<extra></extra>"))
+            fig6.update_layout(**PLOT_LAYOUT, height=420,
+                               title=dict(text="<b>Chart 5 · Investor emotional triggers</b><br><span style='font-size:12px;"
+                                               "color:#64748B'>Most frequent emotions expressed by churners</span>"),
+                               xaxis=dict(title="Records", gridcolor="#F1F5F9"), yaxis=dict(title=""))
+            stretch(st.plotly_chart, fig6, config={"displayModeBar": False})
 
     verdict = "above" if assessed_share > 0.75 else "below"
     st.markdown(
@@ -2944,59 +3157,8 @@ def _table_display(view: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-COVERAGE_CSS = """
-<style>
-.cov-head { display: flex; align-items: baseline; gap: 10px; margin: 2px 0 8px 0; }
-.cov-head b { color: #0F172A; font-size: 0.98rem; }
-.cov-head span { color: #667085; font-size: 12px; }
-.cov-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0 0 18px 0; }
-.cov-card { position: relative; overflow: hidden; height: 112px; box-sizing: border-box; background: #FFFFFF;
-            border: 1px solid #EAECF0; border-radius: 12px; box-shadow: 0 1px 3px rgba(16, 24, 40, .05);
-            padding: 14px 16px; display: flex; flex-direction: column; transition: all .2s ease; }
-.cov-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16, 24, 40, .08); }
-.cov-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c); }
-.cov-k { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: .07em;
-         text-transform: uppercase; color: #475467; }
-.cov-k i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: inline-block; }
-.cov-v { margin-top: 8px; font-size: 24px; font-weight: 700; color: #0F172A; line-height: 1; white-space: nowrap; }
-.cov-v small { font-size: 13px; font-weight: 600; color: #667085; margin-left: 4px; }
-.cov-bar { margin-top: 10px; height: 6px; border-radius: 999px; background: #EEF1F5; overflow: hidden; }
-.cov-bar span { display: block; height: 100%; background: var(--c); border-radius: 999px; }
-.cov-d { margin-top: auto; font-size: 11.5px; color: #667085; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 760px) { .cov-grid { grid-template-columns: minmax(0, 1fr); } }
-</style>
-"""
-
-
-def render_evidence_coverage(filtered_df: pd.DataFrame) -> None:
-    """Record-level provenance for the rows in view: human-reviewed vs AI-labelled vs keyword-tagged."""
-    n = len(filtered_df)
-    src = (filtered_df["Label Source"].astype(str).str.lower() if "Label Source" in filtered_df
-           else pd.Series("", index=filtered_df.index))
-    human_count = int(src.str.contains("human|golden|validated", na=False).sum())
-    ai_count = int(src.str.contains(r"\bai\b|ai-label|gemini|llm", na=False).sum())
-    keyword_count = int(src.str.contains("keyword|heuristic|auto", na=False).sum())
-    pct = lambda k: f"{(100 * k / n):.0f}%" if n else "0%"  # noqa: E731
-    cards = [
-        ("Human-reviewed", human_count, "#00D09C", "Labels checked by a reviewer"),
-        ("AI-labelled", ai_count, "#6172F3",
-         "Labels assigned by Gemini" if ai_count else "None yet: Gemini only translates quotes"),
-        ("Keyword-tagged", keyword_count, "#1B365D", "Rule-based labels from keyword heuristics"),
-    ]
-    html_cards = "".join(
-        f'<div class="cov-card" style="--c:{c}"><div class="cov-k"><i></i>{name}</div>'
-        f'<div class="cov-v">{k:,}<small>records · {pct(k)}</small></div>'
-        f'<div class="cov-bar"><span style="width:{(100 * k / n) if n else 0:.1f}%"></span></div>'
-        f'<div class="cov-d" title="{html.escape(desc)}">{html.escape(desc)}</div></div>'
-        for name, k, c, desc in cards)
-    st.markdown(COVERAGE_CSS + f'<div class="cov-head"><b>Evidence Coverage</b><span>How the labels on the '
-                f'{n:,} records in view were assigned</span></div><div class="cov-grid">{html_cards}</div>',
-                unsafe_allow_html=True)
-
-
 def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
     render_kpi_shelf(df, summary)
-    render_evidence_coverage(df)
     st.write("")
 
     eval_open, evid_open = render_cta_bar()
