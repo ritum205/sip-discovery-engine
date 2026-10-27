@@ -352,6 +352,95 @@ def _clean_schema(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# Missing-label imputation for Problem Behaviour / Problem Root Cause / Investor Emotional Trigger.
+# Keywords are matched as whole words (or word stems), so "red" doesn't fire on "credited", "pan" on "company",
+# "down" on "download" or "band" on "Bandhan". First matching rule wins, in this order.
+_IMPUTE_RULES = [
+    (r"\bauto[\s-]?pay\w*|\bmandate\w*|\b(e-?)?nach\b|\bdebit\w*|\bpenalt\w*|\bbounc\w*|\bsbi\b|\bhdfc\b|\bdeduct\w*",
+     "Faces auto-debit friction and unexpected bank mandate bounce charges",
+     "Mandate execution failure with recurring bank penalty and lack of proactive alert",
+     "Fear of Penalty"),
+    (r"\bcancel\w*|\bstop\w*|\bpaus\w*|\bskip\w*|\bband\b",
+     "Forced to cancel SIP due to absence of flexible multi-month pause option",
+     "Binary skip-or-cancel controls without temporary financial relief mechanisms",
+     "Frustration"),
+    (r"\breflect\w*|\bunits?\b|\bportfolio\w*|\bnav\b|\ballot\w*|\bdouble\w*|\bmoney\s+cut\b",
+     "Repeatedly checks portfolio as deducted funds do not reflect in active holdings",
+     "Delayed unit allocation and lack of real-time payment reconciliation status",
+     "Distrust"),
+    (r"\bloss\w*|\bnegative\b|\bdown\b|\bcrash\w*|\bred\b|\breturns?\b",
+     "Stops SIP prematurely during short-term market drawdown",
+     "Expectation mismatch on early volatility and absence of reassurance nudges",
+     "Anxiety/Stress"),
+    (r"\bkyc\b|\bpan\b|\botp\b|\bverif\w*|\blog\s?-?in\w*",
+     "Abandons onboarding before successful first instalment",
+     "Repetitive KYC verification drop-offs and authentication timeouts",
+     "Confusion"),
+]
+_IMPUTE_RX = [(re.compile(p, re.I), b, r, e) for p, b, r, e in _IMPUTE_RULES]
+_IMPUTE_FALLBACK = ("Experiences operational hurdles during SIP lifecycle",
+                    "General platform usability friction and support turnaround delay",
+                    "Frustration")
+_MISSING_TEXT = {"", "none", "nan", "null", "<na>", "n/a", "na", "nat"}
+
+
+def _is_missing_label(value) -> bool:
+    if value is None:
+        return True
+    try:
+        if pd.isna(value):
+            return True
+    except (TypeError, ValueError):
+        pass
+    return str(value).strip().lower() in _MISSING_TEXT
+
+
+def _find_col(df: pd.DataFrame, *wanted: str) -> str | None:
+    """Case/whitespace-insensitive column lookup; 'behavior' and 'behaviour' are treated as the same word."""
+    norm = lambda c: " ".join(str(c).lower().replace("behavior", "behaviour").split())  # noqa: E731
+    cols = {norm(c): c for c in df.columns}
+    return next((cols[norm(w)] for w in wanted if norm(w) in cols), None)
+
+
+def _impute_labels_for(text) -> tuple[str, str, str]:
+    t = "" if _is_missing_label(text) else str(text)
+    for rx, behaviour, root, emotion in _IMPUTE_RX:
+        if rx.search(t):
+            return behaviour, root, emotion
+    return _IMPUTE_FALLBACK
+
+
+def impute_missing_labels(df: pd.DataFrame) -> pd.DataFrame:
+    """Fills null / NaN / empty / 'None' Problem Behaviour, Problem Root Cause and Investor Emotional Trigger
+    from the review text. Existing (validated or inferred) values are never overwritten."""
+    if df is None or df.empty:
+        return df
+    df = df.copy()
+    text_col = _find_col(df, "Original Comment", "comment", "review", "review text", "text")
+    targets = [("Problem Behaviour", ("Problem Behaviour", "Problem Behavior")),
+               ("Problem Root Cause", ("Problem Root Cause",)),
+               ("Investor Emotional Trigger", ("Investor Emotional Trigger",))]
+    cols = []
+    for canonical, aliases in targets:
+        col = _find_col(df, *aliases)
+        if col is None:
+            col = canonical
+            df[col] = pd.NA
+        cols.append(col)
+    missing = df[cols].apply(lambda s: s.map(_is_missing_label))
+    rows = missing.any(axis=1)
+    if not rows.any():
+        return df
+    texts = df.loc[rows, text_col] if text_col else pd.Series("", index=df.index[rows])
+    labels = [_impute_labels_for(t) for t in texts]
+    for k, col in enumerate(cols):
+        fill = pd.Series([lab[k] for lab in labels], index=texts.index)
+        need = missing.loc[rows, col]
+        df[col] = df[col].astype(object)
+        df.loc[need[need].index, col] = fill[need]
+    return df
+
+
 @st.cache_data(show_spinner=False)
 def load_master_dataset():
     """wb.xlsx + reddit_sip_reviews.csv + youtube_sip_comments.csv -> df_master.
@@ -377,6 +466,7 @@ def load_master_dataset():
         master = master.drop_duplicates(subset=["Original Comment", "Source URL"]).reset_index(drop=True)
     info["duplicates"] = info["extracted"] - len(master)
     info["by_platform"] = master["Source Platform"].value_counts().reindex(PLATFORMS, fill_value=0).to_dict()
+    master = impute_missing_labels(master)
     return master, info
 
 
@@ -467,7 +557,7 @@ def build_full_view(master: pd.DataFrame, golden: pd.DataFrame | None) -> pd.Dat
     kb = ec.THEME_KB
     df["Recommended Groww Intervention"] = df["Problem Theme"].map(lambda t: kb.get(t, {}).get("intervention", pd.NA))
     df["Target North-Star Metric Impact"] = df["Problem Theme"].map(lambda t: kb.get(t, {}).get("nsm", pd.NA))
-    return df
+    return impute_missing_labels(df)
 
 
 @st.cache_data(show_spinner=False)
@@ -2229,6 +2319,7 @@ df_all["Problem Theme"] = df_all["Problem Theme"].map(lambda v: ec.normalize_the
 df_all["SIP Tenure (Months)"] = pd.to_numeric(df_all["SIP Tenure (Months)"].map(ec.parse_tenure), errors="coerce").astype("Int64")
 df_all["Tenure Band"] = df_all["SIP Tenure (Months)"].map(ec.tenure_band)
 df_all["Lifecycle Stage"] = df_all["Original Comment"].map(infer_lifecycle_stage)
+df_all = impute_missing_labels(df_all)  # also covers the Validated view
 if "Year" in df_all.columns:
     df_all["Year"] = pd.to_numeric(df_all["Year"], errors="coerce").astype("Int64")
 display_cols.append("Lifecycle Stage")
@@ -2784,6 +2875,18 @@ def render_evaluator_dashboard(df: pd.DataFrame, summary: dict) -> None:
         f"({verdict} the 75% hypothesis).")
 
 
+def _table_display(view: pd.DataFrame) -> pd.DataFrame:
+    """Display copy for the Discovery Table: no None/NaN/blank cells. Analysis columns keep their real
+    values elsewhere; only this copy turns gaps into readable text."""
+    out = impute_missing_labels(view)
+    for col in out.columns:
+        if col in ("SIP Tenure (Months)", "Year"):
+            out[col] = out[col].map(lambda v: "Not stated" if _is_missing_label(v) else str(int(float(v))))
+        else:
+            out[col] = out[col].map(lambda v: "Not stated" if _is_missing_label(v) else v)
+    return out
+
+
 def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
     render_kpi_shelf(df, summary)
     st.write("")
@@ -2808,11 +2911,13 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
             "Problem Root Cause": st.column_config.TextColumn(width="large"),
         }
         column_config = {k: v for k, v in column_config.items() if k in display_cols}
+        column_config.pop("SIP Tenure (Months)", None)  # shown as text so unstated tenures read "Not stated"
+        table_view = _table_display(table_df[display_cols])
         if table_df.empty:
             st.info("No reviews match this keyword. Try a broader term.")
         else:
-            stretch(st.dataframe, table_df[display_cols], hide_index=True, height=560, column_config=column_config)
-        st.download_button("Download filtered view (.csv)", table_df[display_cols].to_csv(index=False).encode("utf-8"),
+            stretch(st.dataframe, table_view, hide_index=True, height=560, column_config=column_config)
+        st.download_button("Download filtered view (.csv)", table_view.to_csv(index=False).encode("utf-8"),
                            file_name="sip_discovery_filtered.csv", mime="text/csv", key="csv_download",
                            disabled=table_df.empty)
 
