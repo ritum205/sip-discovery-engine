@@ -2451,94 +2451,283 @@ def _life_readout(view: pd.DataFrame) -> str:
             f"records in view); ")
 
 
-def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
-    render_kpi_shelf(df, summary)
-    st.write("")
+# =============================================================================
+# EVALUATOR DASHBOARD — hidden behind a pulsing CTA; strategic insights, Quick Reads, non-scrolling tables
+# =============================================================================
+EVAL_CSS = """
+<style>
+@keyframes eval-pulse-glow {
+    0%   { box-shadow: 0 0 0 0 rgba(0, 208, 156, 0.6); }
+    70%  { box-shadow: 0 0 0 12px rgba(0, 208, 156, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(0, 208, 156, 0); }
+}
+@keyframes eval-shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.st-key-eval_gate { background: linear-gradient(135deg, #F0FDF9 0%, #FFFFFF 60%); border: 1px solid #A7F3D0;
+                    border-radius: 14px; padding: 18px 22px 16px 22px; margin: 10px 0 6px 0; }
+.eval-gate-title { font-size: 1.05rem; font-weight: 700; color: #0F172A; margin: 0 0 2px 0; }
+.eval-gate-sub { font-size: 0.86rem; color: #475467; margin: 0 0 10px 0; }
+.st-key-eval_cta button { animation: eval-pulse-glow 2s infinite; border: 2px solid #00D09C !important;
+    font-weight: 700 !important; color: #FFFFFF !important; border-radius: 12px !important; min-height: 48px;
+    background: linear-gradient(110deg, #00B386 0%, #00D09C 40%, #5EEAD4 50%, #00D09C 60%, #00B386 100%) !important;
+    background-size: 200% 100% !important; animation: eval-pulse-glow 2s infinite, eval-shimmer 3.5s linear infinite; }
+.st-key-eval_cta button:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.st-key-eval_close button { border-radius: 10px !important; border: 1px solid #D0D5DD !important; color: #344054 !important; }
+@media (prefers-reduced-motion: reduce) { .st-key-eval_cta button { animation: none !important; } }
+.eval-head { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px 0; }
+.eval-head h3 { margin: 0; color: #0F172A; font-size: 1.35rem; }
+.eval-tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #00805F;
+            background: rgba(0, 208, 156, .14); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.ins-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 12px 0 18px 0; }
+.ins-card { background: #FFFFFF; border: 1px solid #EAECF0; border-radius: 12px; padding: 14px 16px; min-height: 150px;
+            box-shadow: 0 1px 3px rgba(16, 24, 40, .05); display: flex; flex-direction: column; box-sizing: border-box;
+            transition: all .2s ease; }
+.ins-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16, 24, 40, .08); }
+.ins-k { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #00805F; }
+.ins-v { font-size: 17px; font-weight: 700; color: #0F172A; line-height: 1.25; margin: 6px 0 6px 0; }
+.ins-v .num { color: #00805F; }
+.ins-d { font-size: 12.5px; color: #475467; line-height: 1.45; margin-top: auto; }
+.qr { display: flex; gap: 10px; align-items: flex-start; background: #F8FAFC; border: 1px solid #E4E7EC;
+      border-left: 3px solid #00D09C; border-radius: 10px; padding: 10px 14px; margin: 18px 0 4px 0; }
+.qr-tag { flex-shrink: 0; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+          color: #00805F; background: rgba(0, 208, 156, .14); border-radius: 999px; padding: 2px 8px; margin-top: 1px; }
+.qr-t { font-size: 13.5px; color: #1F2937; line-height: 1.5; }
+.ev-tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; border: 1px solid #EAECF0;
+          border-radius: 12px; overflow: hidden; margin: 6px 0 4px 0; table-layout: auto; }
+.ev-tbl th { background: #F8FAFC; color: #475467; font-size: 11px; font-weight: 700; letter-spacing: .05em;
+             text-transform: uppercase; text-align: left; padding: 9px 12px; border-bottom: 1px solid #EAECF0; white-space: nowrap; }
+.ev-tbl td { padding: 9px 12px; border-bottom: 1px solid #F2F4F7; color: #101828; vertical-align: middle; }
+.ev-tbl tr:last-child td { border-bottom: none; }
+.ev-tbl td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ev-tbl .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+.ev-tbl .bar { position: relative; height: 8px; border-radius: 999px; background: #EEF1F5; min-width: 70px; }
+.ev-tbl .bar span { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: #00D09C; }
+.ev-tbl .chip { font-size: 11px; font-weight: 600; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.chip.ux { color: #FFFFFF; background: #1B365D; } .chip.nudge { color: #00563F; background: rgba(0, 208, 156, .2); }
+.chip.edu { color: #1E3A8A; background: #E0EAFF; } .chip.low { color: #475467; background: #F2F4F7; }
+.tbl-title { font-weight: 700; color: #0F172A; margin: 14px 0 2px 0; font-size: 0.98rem; }
+.tbl-sub { font-size: 12px; color: #667085; margin-bottom: 4px; }
+@media (max-width: 1000px) { .ins-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px)  { .ins-grid { grid-template-columns: minmax(0, 1fr); }
+                             .ev-tbl .hide-sm { display: none; }
+                             .ev-tbl th, .ev-tbl td { padding: 8px 8px; white-space: normal; }
+                             .ev-tbl .chip { white-space: normal; display: inline-block; } }
+</style>
+"""
 
-    render_evidence(df)
-    tab_dash, tab_table, tab_export = st.tabs(["📊 Evaluator Dashboard", "🔎 Discovery Table", "⬇️ Export Workbook"])
+_LEVER = {ec.PREVENT_UX: ("Product / UX fix", "ux"), ec.PREVENT_NUDGE: ("FinTech nudge", "nudge"),
+          ec.PREVENT_EDU: ("Investor education", "edu"), ec.PREVENT_LOW: ("External / life event", "low")}
 
-    with tab_dash:
-        # Chart 1 — friction by SIP lifecycle stage (inferred for every row, so it is never sparse)
-        life_order = LIFECYCLE_STAGES + [LIFECYCLE_OTHER]
-        life_counts = df["Lifecycle Stage"].value_counts().reindex(life_order, fill_value=0)
-        if int(life_counts.sum()) == 0:
-            st.info("No records in view, so the lifecycle chart cannot be drawn.")
-        else:
-            top_life = life_counts[LIFECYCLE_STAGES].idxmax()
-            life_share = life_counts / max(int(life_counts.sum()), 1)
-            life_driver = []
-            for stg in life_order:
-                sub = df.loc[(df["Lifecycle Stage"] == stg) & df["Problem Theme"].isin(ec.THEMES), "Problem Theme"]
-                life_driver.append(sub.value_counts().index[0] if len(sub) else "—")
-            plot_order = life_order[::-1]  # Plotly draws horizontal bars bottom-up; keep journey order top-down
-            idx = [life_order.index(x) for x in plot_order]
-            bar_colors = [EMERALD if stg == top_life else ("#CBD5E1" if stg == LIFECYCLE_OTHER else "#0F172A")
-                          for stg in plot_order]
-            fig1 = go.Figure(go.Bar(
-                y=plot_order, x=[int(life_counts[x]) for x in plot_order], orientation="h",
-                marker=dict(color=bar_colors, line=dict(width=0)),
-                text=[f"{int(life_counts[x]):,} · {life_share[x]:.0%}" for x in plot_order], textposition="outside",
-                cliponaxis=False,
-                customdata=[[f"{life_share[x]:.1%}", life_driver[k]] for x, k in zip(plot_order, idx)],
-                hovertemplate="<b>%{y}</b><br>%{x:,} records (%{customdata[0]} of view)"
-                              "<br>Top driver here: %{customdata[1]}<extra></extra>"))
-            fig1.update_layout(**PLOT_LAYOUT, height=380, bargap=0.35,
-                               title=dict(text="<b>Chart 1 · SIP Friction by Lifecycle Stage</b><br>"
-                                               "<span style='font-size:12px;color:#5A6B82'>Where in the SIP journey investors "
-                                               "hit friction · stage inferred from each comment · hover for the top driver</span>"),
-                               xaxis=dict(title="Records", gridcolor="#EEF1F5", range=[0, life_counts.max() * 1.22]),
-                               yaxis=dict(title="", tickfont=dict(size=13, color="#0F172A")))
-            stretch(st.plotly_chart, fig1, config={"displayModeBar": False})
 
-        # Chart 2 — driver breakdown (records + dominant emotion only)
-        themes = summary["themes"].sort_values("Records")
-        left, right = st.columns([3, 2])
-        with left:
-            fig2 = go.Figure(go.Bar(
-                y=themes["Problem Theme"], x=themes["Share"], orientation="h",
-                marker_color=[THEME_COLORS.get(t, NAVY) for t in themes["Problem Theme"]],
-                text=[f"{s:.0%}" for s in themes["Share"]], textposition="outside",
-                customdata=themes[["Records", "Dominant Emotion"]].values,
-                hovertemplate="<b>%{y}</b><br>Share: %{x:.1%}<br>Records: %{customdata[0]}"
-                              "<br>Dominant emotion: %{customdata[1]}<extra></extra>"))
-            fig2.update_layout(**PLOT_LAYOUT, height=420,
-                               title=dict(text="<b>Chart 2 · Root-Cause Driver Breakdown</b><br>"
-                                               "<span style='font-size:12px;color:#5A6B82'>% share of churn records · hover for records & dominant emotion</span>"),
-                               xaxis=dict(tickformat=".0%", gridcolor="#EEF1F5", range=[0, themes["Share"].max() * 1.25]),
-                               yaxis=dict(title=""))
-            stretch(st.plotly_chart, fig2, config={"displayModeBar": False})
-        with right:
-            st.markdown(f"<div style='height:52px'></div><b style='color:{NAVY}'>Driver scorecard</b>", unsafe_allow_html=True)
-            tbl = summary["themes"][["Problem Theme", "Records", "Share", "Dominant Emotion", "Addressable Share"]].copy()
-            tbl["Share"] = (tbl["Share"] * 100).round(1)
-            tbl["Addressable Share"] = (tbl["Addressable Share"] * 100).round(0)
-            stretch(st.dataframe, tbl, hide_index=True, height=340, column_config={
-                "Share": st.column_config.ProgressColumn("Share", format="%.0f%%", min_value=0,
-                                                         max_value=float(max(tbl["Share"].max(), 1))),
-                "Addressable Share": st.column_config.NumberColumn("Addressable", format="%.0f%%"),
-            })
+def _ev_esc(x) -> str:
+    return html.escape(str(x), quote=True)
 
-        # Chart 3 — preventability
+
+def _quick_read(text_html: str) -> None:
+    """Short executive takeaway shown above a chart. `text_html` is trusted markup built from escaped values."""
+    st.markdown(f'<div class="qr"><span class="qr-tag">⚡ Quick Read</span><div class="qr-t">{text_html}</div></div>',
+                unsafe_allow_html=True)
+
+
+def _ev_pct(n, d) -> str:
+    return f"{(100 * n / d):.0f}%" if d else "0%"
+
+
+def _ev_top(series: pd.Series, exclude=()) -> tuple[str, int]:
+    vc = series.dropna().astype(str).value_counts()
+    vc = vc[~vc.index.isin(list(exclude))]
+    return (str(vc.index[0]), int(vc.iloc[0])) if len(vc) else ("—", 0)
+
+
+def _driver_table(df: pd.DataFrame, summary: dict) -> str:
+    """Non-scrolling driver scorecard: share bar, dominant emotion, peak lifecycle stage, primary lever."""
+    themes = summary["themes"]
+    max_share = float(themes["Share"].max()) if len(themes) else 1.0
+    rows = []
+    for _, t in themes.iterrows():
+        sub = df[df["Problem Theme"] == t["Problem Theme"]]
+        stage, _ = _ev_top(sub["Lifecycle Stage"], exclude=[LIFECYCLE_OTHER]) if "Lifecycle Stage" in sub else ("—", 0)
+        lever_lvl, _ = _ev_top(sub["Churn Preventability"][sub["Churn Preventability"].isin(ec.PREVENTABILITY_LEVELS)])
+        lever, cls = _LEVER.get(lever_lvl, ("Not assessed", "low"))
+        width = 100 * float(t["Share"]) / max_share if max_share else 0
+        rows.append(
+            f'<tr><td><span class="dot" style="background:{THEME_COLORS.get(t["Problem Theme"], NAVY)}"></span>'
+            f'<b>{_ev_esc(t["Problem Theme"])}</b></td>'
+            f'<td class="num hide-sm">{int(t["Records"]):,}</td>'
+            f'<td class="num">{float(t["Share"]):.0%}</td>'
+            f'<td class="hide-sm" style="width:16%"><div class="bar"><span style="width:{width:.0f}%"></span></div></td>'
+            f'<td class="hide-sm">{_ev_esc(t["Dominant Emotion"])}</td>'
+            f'<td class="hide-sm">{_ev_esc(stage)}</td>'
+            f'<td class="num">{float(t["Addressable Share"]):.0%}</td>'
+            f'<td><span class="chip {cls}">{_ev_esc(lever)}</span></td></tr>')
+    return ('<table class="ev-tbl"><thead><tr><th>Driver</th><th class="hide-sm" style="text-align:right">Records</th>'
+            '<th style="text-align:right">Share</th><th class="hide-sm"></th><th class="hide-sm">Dominant emotion</th>'
+            '<th class="hide-sm">Peak lifecycle stage</th><th style="text-align:right">Fixable</th>'
+            '<th>Primary lever</th></tr></thead><tbody>' + "".join(rows) + "</tbody></table>")
+
+
+def _stage_table(df: pd.DataFrame) -> str:
+    """Non-scrolling lifecycle table: records, share, top driver and its share inside the stage, top emotion."""
+    total = max(len(df), 1)
+    rows = []
+    for stg in LIFECYCLE_STAGES + [LIFECYCLE_OTHER]:
+        sub = df[df["Lifecycle Stage"] == stg]
+        if sub.empty:
+            continue
+        drv, dn = _ev_top(sub["Problem Theme"][sub["Problem Theme"].isin(ec.THEMES)])
+        emo, _ = _ev_top(sub["Investor Emotional Trigger"])
+        rows.append(f'<tr><td><b>{_ev_esc(stg)}</b></td><td class="num">{len(sub):,}</td>'
+                    f'<td class="num">{_ev_pct(len(sub), total)}</td><td>{_ev_esc(drv)} '
+                    f'<span style="color:#667085">({_ev_pct(dn, len(sub))})</span></td>'
+                    f'<td class="hide-sm">{_ev_esc(emo)}</td></tr>')
+    return ('<table class="ev-tbl"><thead><tr><th>Lifecycle stage</th><th style="text-align:right">Records</th>'
+            '<th style="text-align:right">Share</th><th>Top driver in stage</th><th class="hide-sm">Top emotion</th>'
+            '</tr></thead><tbody>' + "".join(rows) + "</tbody></table>")
+
+
+def _insight_cards(df: pd.DataFrame, summary: dict, assessed_share: float) -> str:
+    n = max(len(df), 1)
+    stage, sn = _ev_top(df["Lifecycle Stage"], exclude=[LIFECYCLE_OTHER])
+    themes = summary["themes"]
+    top_t = themes.iloc[0]
+    top3 = themes.head(3)
+    cards = [
+        ("Where it breaks", f'{_ev_esc(stage)} · <span class="num">{_ev_pct(sn, n)}</span>',
+         "The lifecycle step where most investors hit friction in this view. Fixing this flow touches the most churners."),
+        ("Why they leave", f'{_ev_esc(top_t["Problem Theme"])} · <span class="num">{float(top_t["Share"]):.0%}</span>',
+         f'Top 3 drivers cover {float(top3["Share"].sum()):.0%} of records; the leading driver is mostly felt as '
+         f'{_ev_esc(str(top_t["Dominant Emotion"]).lower())}.'),
+        ("What's fixable", f'<span class="num">{assessed_share:.0%}</span> addressable',
+         "Share of assessed cases that a product/UX fix, a FinTech nudge or investor education could prevent."),
+    ]
+    g = df[df["Product"] == "Groww"] if "Product" in df else df.iloc[0:0]
+    if len(g):
+        gd, gn = _ev_top(g["Problem Theme"][g["Problem Theme"].isin(ec.THEMES)])
+        cards.append(("Groww signal", f'{_ev_esc(gd)} · <span class="num">{_ev_pct(gn, len(g))}</span>',
+                      f'Leading driver among the {len(g):,} Groww reviews in view ({_ev_pct(len(g), n)} of records).'))
+    else:
+        yrs = pd.to_numeric(df.get("Year"), errors="coerce").dropna().astype(int) if "Year" in df else pd.Series(dtype=int)
+        span = f"{yrs.min()}–{yrs.max()}" if len(yrs) else "—"
+        cards.append(("Coverage", f'{len(yrs):,} dated reviews', f"Records in view span {span}."))
+    return '<div class="ins-grid">' + "".join(
+        f'<div class="ins-card"><div class="ins-k">{k}</div><div class="ins-v">{v}</div><div class="ins-d">{d}</div></div>'
+        for k, v, d in cards) + "</div>"
+
+
+def _toggle_evaluator() -> None:
+    st.session_state["eval_open"] = not st.session_state.get("eval_open", False)
+
+
+def render_evaluator_gate() -> bool:
+    """Pulsing CTA card; returns True when the evaluator dashboard should be shown."""
+    st.markdown(EVAL_CSS, unsafe_allow_html=True)
+    is_open = st.session_state.get("eval_open", False)
+    if not is_open:
+        with st.container(key="eval_gate"):
+            st.markdown('<p class="eval-gate-title">📊 Evaluator Dashboard</p><p class="eval-gate-sub">Strategic insights, '
+                        'driver scorecards and charts with a one-line Quick Read on each, for the records in view.</p>',
+                        unsafe_allow_html=True)
+            st.button("✨ Unlock Evaluator Dashboard · Deep-Dive Churn Intelligence", key="eval_cta",
+                      on_click=_toggle_evaluator, use_container_width=True)
+    return is_open
+
+
+def render_evaluator_dashboard(df: pd.DataFrame, summary: dict) -> None:
+    head_l, head_r = st.columns([5, 1])
+    with head_l:
+        st.markdown('<div class="eval-head"><h3>Evaluator Dashboard</h3><span class="eval-tag">Deep-Dive Churn '
+                    f'Intelligence</span></div><div class="tbl-sub">{len(df):,} records in view · every number below '
+                    'follows the Discovery Filters</div>', unsafe_allow_html=True)
+    with head_r:
+        st.button("Hide dashboard", key="eval_close", on_click=_toggle_evaluator, use_container_width=True)
+
+    prev_counts = df["Churn Preventability"].value_counts().reindex(ec.PREVENTABILITY_LEVELS, fill_value=0)
+    prev_counts = prev_counts[prev_counts > 0]
+    assessed_share = df["Churn Preventability"].map(ec.is_addressable).sum() / max(int(prev_counts.sum()), 1)
+    themes = summary["themes"].sort_values("Records")
+
+    st.markdown(_insight_cards(df, summary, assessed_share), unsafe_allow_html=True)
+
+    # Chart 1 — lifecycle stage
+    life_order = LIFECYCLE_STAGES + [LIFECYCLE_OTHER]
+    life_counts = df["Lifecycle Stage"].value_counts().reindex(life_order, fill_value=0)
+    if int(life_counts.sum()):
+        ranked = life_counts[LIFECYCLE_STAGES].sort_values(ascending=False)
+        top_life, second = ranked.index[0], ranked.index[1]
+        ratio = ranked.iloc[0] / ranked.iloc[1] if ranked.iloc[1] else None
+        drv, dn = _ev_top(df.loc[df["Lifecycle Stage"] == top_life, "Problem Theme"].pipe(lambda s: s[s.isin(ec.THEMES)]))
+        _quick_read(f"<b>{_ev_esc(top_life)}</b> holds {_ev_pct(ranked.iloc[0], len(df))} of friction"
+                    + (f", {ratio:.1f}× the next stage ({_ev_esc(second)})" if ratio else "")
+                    + f". Inside it, <b>{_ev_esc(drv)}</b> is the top driver ({_ev_pct(dn, ranked.iloc[0])} of that stage).")
+        life_share = life_counts / max(int(life_counts.sum()), 1)
+        life_driver = []
+        for stg in life_order:
+            sub = df.loc[(df["Lifecycle Stage"] == stg) & df["Problem Theme"].isin(ec.THEMES), "Problem Theme"]
+            life_driver.append(sub.value_counts().index[0] if len(sub) else "—")
+        plot_order = life_order[::-1]
+        idx = [life_order.index(x) for x in plot_order]
+        fig1 = go.Figure(go.Bar(
+            y=plot_order, x=[int(life_counts[x]) for x in plot_order], orientation="h",
+            marker=dict(color=[EMERALD if s == top_life else ("#CBD5E1" if s == LIFECYCLE_OTHER else "#0F172A")
+                               for s in plot_order], line=dict(width=0)),
+            text=[f"{int(life_counts[x]):,} · {life_share[x]:.0%}" for x in plot_order], textposition="outside",
+            cliponaxis=False, customdata=[[f"{life_share[x]:.1%}", life_driver[k]] for x, k in zip(plot_order, idx)],
+            hovertemplate="<b>%{y}</b><br>%{x:,} records (%{customdata[0]} of view)"
+                          "<br>Top driver here: %{customdata[1]}<extra></extra>"))
+        fig1.update_layout(**PLOT_LAYOUT, height=360, bargap=0.35,
+                           title=dict(text="<b>Chart 1 · SIP Friction by Lifecycle Stage</b><br>"
+                                           "<span style='font-size:12px;color:#5A6B82'>Where in the SIP journey investors hit "
+                                           "friction · stage inferred from each comment · hover for the top driver</span>"),
+                           xaxis=dict(title="Records", gridcolor="#EEF1F5", range=[0, life_counts.max() * 1.22]),
+                           yaxis=dict(title="", tickfont=dict(size=13, color="#0F172A")))
+        stretch(st.plotly_chart, fig1, config={"displayModeBar": False})
+        st.markdown('<div class="tbl-title">Lifecycle stage breakdown</div>' + _stage_table(df), unsafe_allow_html=True)
+
+    # Chart 2 — driver breakdown + scorecard
+    top3 = summary["themes"].head(3)
+    t0 = summary["themes"].iloc[0]
+    _quick_read(f"The top 3 drivers ({', '.join(_ev_esc(x) for x in top3['Problem Theme'])}) account for "
+                f"<b>{float(top3['Share'].sum()):.0%}</b> of records. <b>{_ev_esc(t0['Problem Theme'])}</b> leads at "
+                f"{float(t0['Share']):.0%}, mostly expressed as {_ev_esc(str(t0['Dominant Emotion']).lower())}.")
+    fig2 = go.Figure(go.Bar(
+        y=themes["Problem Theme"], x=themes["Share"], orientation="h",
+        marker_color=[THEME_COLORS.get(t, NAVY) for t in themes["Problem Theme"]],
+        text=[f"{s:.0%}" for s in themes["Share"]], textposition="outside", cliponaxis=False,
+        customdata=themes[["Records", "Dominant Emotion"]].values,
+        hovertemplate="<b>%{y}</b><br>Share: %{x:.1%}<br>Records: %{customdata[0]}"
+                      "<br>Dominant emotion: %{customdata[1]}<extra></extra>"))
+    fig2.update_layout(**PLOT_LAYOUT, height=400,
+                       title=dict(text="<b>Chart 2 · Root-Cause Driver Breakdown</b><br><span style='font-size:12px;"
+                                       "color:#5A6B82'>% share of churn records · hover for records & dominant emotion</span>"),
+                       xaxis=dict(tickformat=".0%", gridcolor="#EEF1F5", range=[0, themes["Share"].max() * 1.25]),
+                       yaxis=dict(title=""))
+    stretch(st.plotly_chart, fig2, config={"displayModeBar": False})
+    st.markdown('<div class="tbl-title">Driver scorecard</div><div class="tbl-sub">Primary lever = the most common '
+                'preventability level for that driver</div>' + _driver_table(df, summary), unsafe_allow_html=True)
+
+    # Chart 3 — preventability donut + by driver
+    if prev_counts.empty:
+        st.info("No rows in view have a preventability assessment yet.")
+    else:
+        lead_lvl = prev_counts.idxmax()
+        ux_by = (df[df["Problem Theme"].isin(ec.THEMES)].groupby("Problem Theme")["Churn Preventability"]
+                 .apply(lambda s: (s == ec.PREVENT_UX).mean()))
+        ux_by = ux_by[df["Problem Theme"].value_counts().reindex(ux_by.index).fillna(0) >= 5].sort_values(ascending=False)
+        ux_txt = (f" Drivers most fixable through product changes: <b>{_ev_esc(', '.join(ux_by.head(2).index))}</b>."
+                  if len(ux_by) else "")
+        _quick_read(f"<b>{assessed_share:.0%}</b> of assessed cases are addressable. The largest bucket is "
+                    f"<b>{_ev_esc(_LEVER[lead_lvl][0])}</b> ({_ev_pct(int(prev_counts.max()), int(prev_counts.sum()))})." + ux_txt)
         p_left, p_right = st.columns([2, 3])
-        prev_counts = df["Churn Preventability"].value_counts().reindex(ec.PREVENTABILITY_LEVELS, fill_value=0)
-        prev_counts = prev_counts[prev_counts > 0]
-        _assessed_share = (df["Churn Preventability"].map(ec.is_addressable).sum()
-                           / max(int(prev_counts.sum()), 1))
         with p_left:
-            if prev_counts.empty:
-                st.info("No rows in view have a preventability assessment yet.")
-            else:
-                fig3 = go.Figure(go.Pie(
-                    labels=prev_counts.index, values=prev_counts.values, hole=0.62, sort=False,
-                    marker=dict(colors=[PREVENT_COLORS[l] for l in prev_counts.index], line=dict(color="#FFFFFF", width=2)),
-                    textinfo="percent", hovertemplate="%{label}<br>%{value} records (%{percent})<extra></extra>"))
-                fig3.add_annotation(text=f"<b>{_assessed_share:.0%}</b><br><span style='font-size:12px'>addressable</span>",
-                                    showarrow=False, font=dict(size=26, color=NAVY))
-                fig3.update_layout(**PLOT_LAYOUT, height=400, showlegend=True,
-                                   legend=dict(orientation="h", y=-0.12, font=dict(size=11)),
-                                   title=dict(text="<b>Chart 3 · Churn Preventability</b>"))
-                stretch(st.plotly_chart, fig3, config={"displayModeBar": False})
+            fig3 = go.Figure(go.Pie(
+                labels=prev_counts.index, values=prev_counts.values, hole=0.62, sort=False,
+                marker=dict(colors=[PREVENT_COLORS[l] for l in prev_counts.index], line=dict(color="#FFFFFF", width=2)),
+                textinfo="percent", hovertemplate="%{label}<br>%{value} records (%{percent})<extra></extra>"))
+            fig3.add_annotation(text=f"<b>{assessed_share:.0%}</b><br><span style='font-size:12px'>addressable</span>",
+                                showarrow=False, font=dict(size=26, color=NAVY))
+            fig3.update_layout(**PLOT_LAYOUT, height=400, showlegend=True,
+                               legend=dict(orientation="h", y=-0.12, font=dict(size=11)),
+                               title=dict(text="<b>Chart 3 · Churn Preventability</b>"))
+            stretch(st.plotly_chart, fig3, config={"displayModeBar": False})
         with p_right:
             cross = df.groupby(["Problem Theme", "Churn Preventability"]).size().reset_index(name="Records")
             fig4 = px.bar(cross, x="Records", y="Problem Theme", color="Churn Preventability", orientation="h",
@@ -2552,36 +2741,58 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
                                xaxis=dict(gridcolor="#EEF1F5"), yaxis=dict(title=""))
             stretch(st.plotly_chart, fig4, config={"displayModeBar": False})
 
-        # Chart 4 — SIP stage × driver
-        s_left, s_right = st.columns([3, 2])
-        with s_left:
-            stage_cross = df.groupby(["SIP Stage", "Problem Theme"]).size().reset_index(name="Records")
-            stage_order = [s for s in ec.STAGES + ["Unknown Stage"] if s in set(stage_cross["SIP Stage"])]
-            fig5 = px.bar(stage_cross, x="SIP Stage", y="Records", color="Problem Theme",
-                          color_discrete_map=THEME_COLORS,
-                          category_orders={"SIP Stage": stage_order, "Problem Theme": ec.THEMES})
-            fig5.update_layout(**PLOT_LAYOUT, height=420, barmode="stack",
-                               title=dict(text="<b>Chart 4 · When each driver strikes</b><br><span style='font-size:12px;color:#5A6B82'>"
-                                               "Churn records by SIP lifecycle stage and driver</span>"),
-                               legend=dict(title="", font=dict(size=11)),
-                               xaxis=dict(title=""), yaxis=dict(gridcolor="#EEF1F5"))
-            stretch(st.plotly_chart, fig5, config={"displayModeBar": False})
-        with s_right:
-            emo = df["Investor Emotional Trigger"].value_counts().head(8).sort_values()
-            fig6 = go.Figure(go.Bar(
-                y=emo.index, x=emo.values, orientation="h", marker_color=["#00D09C", "#1E293B", "#4A6FA5", "#E5A93C", "#D9534F", "#6C7A89", "#66C2A5", "#8A2BE2"],
-                hovertemplate="%{y}: %{x} records<extra></extra>"))
-            fig6.update_layout(**PLOT_LAYOUT, height=420,
-                               title=dict(text="<b>Chart 5 · Investor emotional triggers</b><br><span style='font-size:12px;color:#5A6B82'>"
-                                               "Most frequent emotions expressed by churners</span>"),
-                               xaxis=dict(title="Records", gridcolor="#EEF1F5"), yaxis=dict(title=""))
-            stretch(st.plotly_chart, fig6, config={"displayModeBar": False})
+    # Chart 4 — lifecycle stage × driver, Chart 5 — emotions
+    stage_cross = (df[df["Problem Theme"].isin(ec.THEMES) & (df["Lifecycle Stage"] != LIFECYCLE_OTHER)]
+                   .groupby(["Lifecycle Stage", "Problem Theme"]).size().reset_index(name="Records"))
+    emo = df["Investor Emotional Trigger"].dropna().astype(str).value_counts()
+    if len(stage_cross):
+        cell = stage_cross.sort_values("Records", ascending=False).iloc[0]
+        txt4 = (f"The single biggest hotspot is <b>{_ev_esc(cell['Problem Theme'])}</b> during "
+                f"<b>{_ev_esc(cell['Lifecycle Stage'])}</b> ({int(cell['Records']):,} records, "
+                f"{_ev_pct(int(cell['Records']), len(df))} of view).")
+        if len(emo) >= 2:
+            txt4 += (f" <b>{_ev_esc(emo.index[0])}</b> and <b>{_ev_esc(emo.index[1])}</b> make up "
+                     f"{_ev_pct(int(emo.iloc[:2].sum()), int(emo.sum()))} of expressed emotion.")
+        _quick_read(txt4)
+    s_left, s_right = st.columns([3, 2])
+    with s_left:
+        fig5 = px.bar(stage_cross, x="Lifecycle Stage", y="Records", color="Problem Theme",
+                      color_discrete_map=THEME_COLORS,
+                      category_orders={"Lifecycle Stage": LIFECYCLE_STAGES, "Problem Theme": ec.THEMES})
+        fig5.update_layout(**PLOT_LAYOUT, height=420, barmode="stack",
+                           title=dict(text="<b>Chart 4 · When each driver strikes</b><br><span style='font-size:12px;"
+                                           "color:#5A6B82'>Records by lifecycle stage and driver</span>"),
+                           legend=dict(title="", font=dict(size=11)),
+                           xaxis=dict(title=""), yaxis=dict(gridcolor="#EEF1F5"))
+        stretch(st.plotly_chart, fig5, config={"displayModeBar": False})
+    with s_right:
+        emo8 = emo.head(8).sort_values()
+        fig6 = go.Figure(go.Bar(
+            y=emo8.index, x=emo8.values, orientation="h",
+            marker_color=[EMERALD if v == emo8.max() else "#1E293B" for v in emo8.values],
+            hovertemplate="%{y}: %{x} records<extra></extra>"))
+        fig6.update_layout(**PLOT_LAYOUT, height=420,
+                           title=dict(text="<b>Chart 5 · Investor emotional triggers</b><br><span style='font-size:12px;"
+                                           "color:#5A6B82'>Most frequent emotions expressed by churners</span>"),
+                           xaxis=dict(title="Records", gridcolor="#EEF1F5"), yaxis=dict(title=""))
+        stretch(st.plotly_chart, fig6, config={"displayModeBar": False})
 
-        verdict = "above" if _assessed_share > 0.75 else "below"  # same basis as the KPI card and Chart 3
-        st.markdown(
-            f"**Read-out:** {_life_readout(df)}**{summary['top_theme']}** is the largest driver; and "
-            f"{_assessed_share:.0%} of assessed records are addressable through product fixes, nudges or education "
-            f"({verdict} the 75% hypothesis).")
+    verdict = "above" if assessed_share > 0.75 else "below"
+    st.markdown(
+        f"**Read-out:** {_life_readout(df)}**{summary['top_theme']}** is the largest driver; and "
+        f"{assessed_share:.0%} of assessed records are addressable through product fixes, nudges or education "
+        f"({verdict} the 75% hypothesis).")
+
+
+def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
+    render_kpi_shelf(df, summary)
+    st.write("")
+
+    render_evidence(df)
+    if render_evaluator_gate():
+        render_evaluator_dashboard(df, summary)
+    st.write("")
+    tab_table, tab_export = st.tabs(["🔎 Discovery Table", "⬇️ Export Workbook"])
 
     with tab_table:
         keyword = st.text_input("🔍 Search Reviews by Keyword:", placeholder="e.g., cancel, pause, bounce, xirr, ...",
