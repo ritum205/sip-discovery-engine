@@ -505,6 +505,7 @@ def load_golden_set():
     df["Problem Theme"] = df["Problem Theme"].map(lambda v: ec.normalize_theme(v) if pd.notna(v) else v)
     df["Investor Emotional Trigger"] = df["Investor Emotional Trigger"].map(
         lambda v: str(v).strip() if pd.notna(v) and str(v).strip().lower() not in ec.MISSING_LABELS else pd.NA)
+    df["Label Source"] = SRC_HUMAN  # every golden-set row carries reviewed labels
     return df, name, raw
 
 
@@ -526,6 +527,34 @@ def load_golden_glosses() -> dict:
         return {}
 
 
+# Record-level provenance ("Label Source"): who assigned a row's analytical labels
+SRC_HUMAN, SRC_AI, SRC_KEYWORD = "Human-reviewed", "AI-labelled", "Keyword-tagged"
+
+
+def normalize_label_source(value, default: str = SRC_KEYWORD) -> str:
+    """Maps older or alternative provenance spellings onto the three canonical values."""
+    v = "" if _is_missing_label(value) else str(value).strip().lower()
+    if not v:
+        return default
+    if any(k in v for k in ("human", "golden", "validated", "manual")):
+        return SRC_HUMAN
+    if any(k in v for k in ("gemini", "llm", "ai-label", "ai label", "ai-labelled", "ai labelled")) or v in ("ai", "ai-tagged"):
+        return SRC_AI
+    return SRC_KEYWORD  # keyword / heuristic / auto-tagged / unclassified
+
+
+def ensure_label_source(df: pd.DataFrame, default: str = SRC_KEYWORD) -> pd.DataFrame:
+    """Creates 'Label Source' if missing (adopting a 'Provenance' column when present) and normalises values."""
+    df = df.copy()
+    src_col = _find_col(df, "Label Source") or _find_col(df, "Provenance")
+    if src_col is None:
+        df["Label Source"] = default
+    elif src_col != "Label Source":
+        df["Label Source"] = df[src_col]
+    df["Label Source"] = df["Label Source"].map(lambda v: normalize_label_source(v, default))
+    return df
+
+
 @st.cache_data(show_spinner=False)
 def build_full_view(master: pd.DataFrame, golden: pd.DataFrame | None) -> pd.DataFrame:
     """Full Discovery dataset for analysis: validated labels where a row is in the validated set,
@@ -535,7 +564,7 @@ def build_full_view(master: pd.DataFrame, golden: pd.DataFrame | None) -> pd.Dat
                 "Problem Root Cause", "Investor Emotional Trigger", "Churn Preventability"]
     if not KEEP_WB_LABELS:
         df[analytic] = pd.NA
-    df["Label Source"] = "Auto-tagged (keyword, unvalidated)"
+    df["Label Source"] = SRC_KEYWORD
     if golden is not None:
         lookup = {_match_key(c, u): i for i, (c, u) in enumerate(zip(golden["Original Comment"], golden["Source URL"]))}
         for idx, (c, u) in enumerate(zip(df["Original Comment"], df["Source URL"])):
@@ -543,11 +572,11 @@ def build_full_view(master: pd.DataFrame, golden: pd.DataFrame | None) -> pd.Dat
             if gi is not None:
                 for col in analytic:
                     df.at[idx, col] = golden.iloc[gi][col]
-                df.at[idx, "Label Source"] = "Validated"
-    unl = df["Label Source"] != "Validated"
+                df.at[idx, "Label Source"] = SRC_HUMAN
+    unl = df["Label Source"] != SRC_HUMAN
     df.loc[unl, "Problem Theme"] = df.loc[unl, "Original Comment"].map(auto_tag_theme)
-    df.loc[df["Problem Theme"] == "Unclassified", "Label Source"] = "Unclassified"
-    auto = df["Label Source"] == "Auto-tagged (keyword, unvalidated)"
+    # Rows the keyword classifier couldn't theme stay Keyword-tagged with Problem Theme "Unclassified"
+    auto = (df["Label Source"] == SRC_KEYWORD) & (df["Problem Theme"] != "Unclassified")
     df.loc[auto, "Investor Emotional Trigger"] = [infer_emotion(c, t) for c, t in
                                                   zip(df.loc[auto, "Original Comment"], df.loc[auto, "Problem Theme"])]
     df.loc[auto, "Churn Preventability"] = [infer_preventability(c, t) for c, t in
@@ -2299,7 +2328,7 @@ view_mode = st.radio("View Mode", [VIEW_FULL, VIEW_DEEP], index=0, horizontal=Tr
 if view_mode == VIEW_FULL and len(df_master):
     df_all = build_full_view(df_master, df_golden)
     st.caption("Full view: validated rows keep their labels. Other rows are auto-tagged from keywords (theme, emotion and "
-               "preventability are inferred, not validated); see the Label Source column. Tenure is only shown where stated.")
+               "preventability are inferred, not validated); the Label Source column shows each row's provenance. Tenure is only shown where stated.")
 df_all = df_all.copy()
 # Columns actually present in the dataset drive what the table shows; any schema
 # column that is missing is added as empty so metrics, charts and export never crash.
@@ -2314,6 +2343,9 @@ df_all["SIP Tenure (Months)"] = pd.to_numeric(df_all["SIP Tenure (Months)"].map(
 df_all["Tenure Band"] = df_all["SIP Tenure (Months)"].map(ec.tenure_band)
 df_all["Lifecycle Stage"] = df_all["Original Comment"].map(infer_lifecycle_stage)
 df_all = impute_missing_labels(df_all)  # also covers the Validated view
+df_all = ensure_label_source(df_all, SRC_HUMAN if view_mode == VIEW_DEEP else SRC_KEYWORD)
+if "Label Source" not in display_cols:
+    display_cols.append("Label Source")
 if "Year" in df_all.columns:
     df_all["Year"] = pd.to_numeric(df_all["Year"], errors="coerce").astype("Int64")
 display_cols.append("Lifecycle Stage")
@@ -2365,7 +2397,7 @@ def render_evidence(view: pd.DataFrame, k: int = 6) -> None:
     if pool.empty:
         st.info("No comments to highlight for this selection.")
         return
-    val = (pool["Label Source"] == "Validated") if "Label Source" in pool.columns else pd.Series(True, index=pool.index)
+    val = (pool["Label Source"] == SRC_HUMAN) if "Label Source" in pool.columns else pd.Series(True, index=pool.index)
     pool["_score"] = (val.astype(int) * 3 + pool["Problem Theme"].isin(ec.THEMES).astype(int)
                       + pool["Product"].eq("Groww").astype(int) * 0.5 + pool["_k"].str.len().clip(upper=400) / 400)
     ranked = pool.sort_values("_score", ascending=False)
@@ -2684,7 +2716,7 @@ def _stage_table(df: pd.DataFrame) -> str:
 def _assessed_emotions(view: pd.DataFrame) -> pd.Series:
     """Emotions from validated or keyword-assessed rows only. Rows the classifier left Unclassified get a filler
     emotion for the table, and counting those would inflate the fallback label."""
-    rows = view[view["Label Source"] != "Unclassified"] if "Label Source" in view else view
+    rows = view[view["Problem Theme"] != "Unclassified"] if "Problem Theme" in view else view
     return rows["Investor Emotional Trigger"].map(lambda v: None if _is_missing_label(v) else str(v)).dropna()
 
 
@@ -2912,8 +2944,59 @@ def _table_display(view: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+COVERAGE_CSS = """
+<style>
+.cov-head { display: flex; align-items: baseline; gap: 10px; margin: 2px 0 8px 0; }
+.cov-head b { color: #0F172A; font-size: 0.98rem; }
+.cov-head span { color: #667085; font-size: 12px; }
+.cov-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0 0 18px 0; }
+.cov-card { position: relative; overflow: hidden; height: 112px; box-sizing: border-box; background: #FFFFFF;
+            border: 1px solid #EAECF0; border-radius: 12px; box-shadow: 0 1px 3px rgba(16, 24, 40, .05);
+            padding: 14px 16px; display: flex; flex-direction: column; transition: all .2s ease; }
+.cov-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16, 24, 40, .08); }
+.cov-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c); }
+.cov-k { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: .07em;
+         text-transform: uppercase; color: #475467; }
+.cov-k i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: inline-block; }
+.cov-v { margin-top: 8px; font-size: 24px; font-weight: 700; color: #0F172A; line-height: 1; white-space: nowrap; }
+.cov-v small { font-size: 13px; font-weight: 600; color: #667085; margin-left: 4px; }
+.cov-bar { margin-top: 10px; height: 6px; border-radius: 999px; background: #EEF1F5; overflow: hidden; }
+.cov-bar span { display: block; height: 100%; background: var(--c); border-radius: 999px; }
+.cov-d { margin-top: auto; font-size: 11.5px; color: #667085; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 760px) { .cov-grid { grid-template-columns: minmax(0, 1fr); } }
+</style>
+"""
+
+
+def render_evidence_coverage(filtered_df: pd.DataFrame) -> None:
+    """Record-level provenance for the rows in view: human-reviewed vs AI-labelled vs keyword-tagged."""
+    n = len(filtered_df)
+    src = (filtered_df["Label Source"].astype(str).str.lower() if "Label Source" in filtered_df
+           else pd.Series("", index=filtered_df.index))
+    human_count = int(src.str.contains("human|golden|validated", na=False).sum())
+    ai_count = int(src.str.contains(r"\bai\b|ai-label|gemini|llm", na=False).sum())
+    keyword_count = int(src.str.contains("keyword|heuristic|auto", na=False).sum())
+    pct = lambda k: f"{(100 * k / n):.0f}%" if n else "0%"  # noqa: E731
+    cards = [
+        ("Human-reviewed", human_count, "#00D09C", "Labels checked by a reviewer"),
+        ("AI-labelled", ai_count, "#6172F3",
+         "Labels assigned by Gemini" if ai_count else "None yet: Gemini only translates quotes"),
+        ("Keyword-tagged", keyword_count, "#1B365D", "Rule-based labels from keyword heuristics"),
+    ]
+    html_cards = "".join(
+        f'<div class="cov-card" style="--c:{c}"><div class="cov-k"><i></i>{name}</div>'
+        f'<div class="cov-v">{k:,}<small>records · {pct(k)}</small></div>'
+        f'<div class="cov-bar"><span style="width:{(100 * k / n) if n else 0:.1f}%"></span></div>'
+        f'<div class="cov-d" title="{html.escape(desc)}">{html.escape(desc)}</div></div>'
+        for name, k, c, desc in cards)
+    st.markdown(COVERAGE_CSS + f'<div class="cov-head"><b>Evidence Coverage</b><span>How the labels on the '
+                f'{n:,} records in view were assigned</span></div><div class="cov-grid">{html_cards}</div>',
+                unsafe_allow_html=True)
+
+
 def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
     render_kpi_shelf(df, summary)
+    render_evidence_coverage(df)
     st.write("")
 
     eval_open, evid_open = render_cta_bar()
