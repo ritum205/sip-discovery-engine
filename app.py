@@ -246,6 +246,43 @@ def infer_preventability(text: str, theme: str) -> str:
     return _THEME_PREVENT.get(theme, ec.NOT_ASSESSED)
 
 
+# SIP lifecycle stage inferred from what the comment is about (every row gets one, unlike stated tenure)
+LIFECYCLE_STAGES = ["AutoPay Setup & Verification", "Active SIP Execution", "Cancellation / Pause Request",
+                    "Redemption / Withdrawal"]
+LIFECYCLE_OTHER = "General / Other Feedback"
+_LIFECYCLE_RULES = {
+    "Redemption / Withdrawal": [
+        (r"\b(redeem\w*|redemption|withdr[ae]w\w*|exit load|sell(ing)?|sold|nikal\w*|wapas|vapas|bapos|refund\w*)\b", 3),
+        (r"\b(money|amount|paisa|paise|pasaa|paysa|ammount)\b.{0,40}\b(back|credit\w*|aata|aayega|milega|wapas)\b", 2),
+        (r"\b(don'?t|do not|not|nahi|nhi)\b.{0,20}\b(withdraw\w*|redeem\w*)", -3),
+        (r"\b(lumpsum|lump sum|lock[- ]?in|elss)\b", 1)],
+    "Cancellation / Pause Request": [
+        (r"\b(cancel\w*|cancell?ation|pause\w*|stop\w*|discontinu\w*|band kar\w*|close\w*)\b", 3),
+        (r"\b(skip\w*|resume\w*|restart\w*|reactivat\w*|modify|step[- ]?down)\b", 2)],
+    "AutoPay Setup & Verification": [
+        (r"\b(set ?up|setup|register\w*|registration|approv\w*|verif\w*|activat\w*|link\w*|add(ed)? (a |new )?(bank|mandate))\b", 2),
+        (r"\b(mandate|e-?nach|nach|auto[\s-]?pay|auto[\s-]?debit|upi limit|kyc)\b", 2),
+        (r"\b(new sip|start(ed|ing)? (a |my )?sip|first sip|pehli sip)\b", 2)],
+    "Active SIP Execution": [
+        (r"\b(insufficient|failed|rejected|declined)\b", 3),
+        (r"\b(deduct\w*|debit\w*|instal+ment|payment (failed|fail|pending)|bounce\w*|penalt\w*|charges?|kat\w*|cut)\b", 3),
+        (r"\b(nav|units?|returns?|xirr|loss|profit|portfolio|growth|performance|negative|red)\b", 2),
+        (r"\b(missed|pending|processing|in progress|order|allot\w*|not (reflect|showing|updated))\b", 2),
+        (r"\b(market|crash\w*|correction|fall\w*|nifty|sensex)\b", 1)],
+}
+_LIFECYCLE_RX = {s: [(re.compile(p, re.I), w) for p, w in rules] for s, rules in _LIFECYCLE_RULES.items()}
+_TIE_ORDER = ["Redemption / Withdrawal", "Cancellation / Pause Request", "AutoPay Setup & Verification", "Active SIP Execution"]
+
+def infer_lifecycle_stage(text) -> str:
+    """Which step of the SIP journey the friction happened in, from keywords in the comment."""
+    t = str(text or "")
+    scores = {s: sum(w for rx, w in rules if rx.search(t)) for s, rules in _LIFECYCLE_RX.items()}
+    best = max(scores.values())
+    if best < 2:
+        return LIFECYCLE_OTHER
+    return next(s for s in _TIE_ORDER if scores[s] == best)
+
+
 def is_non_english(text) -> bool:
     """True for comments that need an English translation: any non-Latin script (Devanagari, Telugu, Tamil, etc.)
     or romanised Indic text such as Hinglish or Telugu typed in English letters. Emojis, the rupee sign and
@@ -2042,7 +2079,7 @@ else:
 # ---------------------------------------------------------------------------
 chat_data = df_all  # Ask AI always answers from the validated set (it relies on its root-cause labels)
 st.markdown(f"<h3 style='color:{NAVY};margin-bottom:4px'>Discovery Filters</h3>", unsafe_allow_html=True)
-view_mode = st.radio("View Mode", [VIEW_FULL, VIEW_DEEP], index=1, horizontal=True, key="view_mode")
+view_mode = st.radio("View Mode", [VIEW_FULL, VIEW_DEEP], index=0, horizontal=True, key="view_mode")
 if view_mode == VIEW_FULL and len(df_master):
     df_all = build_full_view(df_master, df_golden)
     st.caption("Full view: validated rows keep their labels. Other rows are auto-tagged from keywords (theme, emotion and "
@@ -2059,11 +2096,15 @@ df_all["Churn Preventability"] = df_all["Churn Preventability"].map(ec.normalize
 df_all["Problem Theme"] = df_all["Problem Theme"].map(lambda v: ec.normalize_theme(v) if pd.notna(v) else v)
 df_all["SIP Tenure (Months)"] = pd.to_numeric(df_all["SIP Tenure (Months)"].map(ec.parse_tenure), errors="coerce").astype("Int64")
 df_all["Tenure Band"] = df_all["SIP Tenure (Months)"].map(ec.tenure_band)
+df_all["Lifecycle Stage"] = df_all["Original Comment"].map(infer_lifecycle_stage)
+if "Year" in df_all.columns:
+    df_all["Year"] = pd.to_numeric(df_all["Year"], errors="coerce").astype("Int64")
+display_cols.append("Lifecycle Stage")
 
 band_order = [b[0] for b in ec.TENURE_BANDS] + ["Not stated"]
 present = lambda col, order: [x for x in order if x in set(df_all[col].dropna())]  # noqa: E731
 
-f0, f1, f2, f3, f4 = st.columns(5)
+f0, f1, f2, f3, f4, f5 = st.columns(6)
 sel_src = f0.multiselect("Source", present("Source Platform", PLATFORMS), placeholder="All sources", key="f_src")
 sel_theme = f1.multiselect("Problem Theme", present("Problem Theme", ec.THEMES + ["Unclassified"]),
                            placeholder="All 8 drivers", key="f_theme")
@@ -2075,6 +2116,8 @@ _prev_opts = present("Churn Preventability", ec.PREVENTABILITY_LEVELS)
 _prev_opts += sorted(str(x) for x in set(df_all["Churn Preventability"].dropna()) if str(x) not in _prev_opts)
 sel_prev = f4.multiselect("Churn Preventability", _prev_opts,
                           placeholder="All levels", key="f_prev")
+_year_opts = (sorted({int(y) for y in df_all["Year"].dropna()}, reverse=True) if "Year" in df_all.columns else [])
+sel_year = f5.multiselect("Year", _year_opts, placeholder="All years", key="f_year")
 
 render_chat(chat_data)
 
@@ -2089,11 +2132,13 @@ if sel_stage:
     df = df[df["SIP Stage"].isin(sel_stage)]
 if sel_prev:
     df = df[df["Churn Preventability"].isin(sel_prev)]
+if sel_year:
+    df = df[df["Year"].isin(sel_year)]
 
 
 def render_evidence(view: pd.DataFrame, k: int = 6) -> None:
     """Representative quote cards from the rows currently in view, with AI translations for non-English comments."""
-    filtered = bool(sel_src or sel_theme or sel_band or sel_stage or sel_prev)
+    filtered = bool(sel_src or sel_theme or sel_band or sel_stage or sel_prev or sel_year)
     st.markdown(f"<h4 style='color:{NAVY};margin:18px 0 2px'>Evidence Highlights</h4>", unsafe_allow_html=True)
     st.caption(("Representative comments for the current filters" if filtered else
                 "Representative comments from the active view") + f" · {len(view):,} rows in view")
@@ -2197,16 +2242,20 @@ KPI_SHELF_CSS = """
 
 
 def _kpi_card(label: str, value: str, foot: str, badge: tuple[str, str] | None = None,
-              pill: str | None = None, text_value: bool = False, pill_short: str | None = None) -> str:
+              pill: str | None = None, text_value: bool = False, pill_short: str | None = None,
+              badge_below: bool = False) -> str:
     """One card as a single-line HTML string (no line breaks, so Streamlit's markdown never turns it into a code block)."""
     esc = lambda x: html.escape(str(x), quote=True)  # noqa: E731
     badge_html = f'<span class="kpi-badge {badge[1]}">{esc(badge[0])}</span>' if badge else ""
+    below_html = ""
+    if badge_html and badge_below:  # long text values need the full row width, so the badge drops below them
+        below_html, badge_html = f'<div style="margin-top:4px">{badge_html}</div>', ""
     pill_html = (f'<div><span class="kpi-pill" title="{esc(pill)}"><span class="full">{esc(pill)}</span>'
                  f'<span class="short">{esc(pill_short or pill)}</span></span></div>') if pill else ""
     return (f'<div class="kpi-card">'
             f'<div class="kpi-head"><span class="kpi-label" title="{esc(label)}">{esc(label)}</span></div>'
             f'<div class="kpi-metric"><span class="kpi-value{" text" if text_value else ""}" title="{esc(value)}">{esc(value)}</span>{badge_html}</div>'
-            f'{pill_html}'
+            f'{below_html}{pill_html}'
             f'<div class="kpi-foot" title="{esc(foot)}">{esc(foot)}</div>'
             f'</div>')
 
@@ -2221,17 +2270,15 @@ def render_kpi_shelf(view: pd.DataFrame, summary: dict) -> None:
     breakdown_short = " · ".join(f"{int(src.get(p, 0)):,} {s}" for p, s in
                                  (("Play Store", "Play"), ("Reddit", "Reddit"), ("YouTube", "YT")))
 
-    # Card 2 · M10–14 drop-off cliff (share of rows whose stated tenure falls in months 10–14)
-    tenure_count, cliff_count = int(summary.get("known_tenure", 0)), int(summary.get("cliff", 0))
-    cliff_pct = round(100 * cliff_count / tenure_count) if tenure_count else 0
-    if tenure_count == 0:
-        cliff_badge = ("No data", "grey")
-    elif tenure_count < 30:
-        cliff_badge = ("Limited sample", "amber")  # too few stated tenures to call the window safe or risky
-    elif cliff_count > 0:
-        cliff_badge = ("Drop-off Window", "red")
+    # Card 2 · Critical SIP stage: the lifecycle step with the most friction (inferred for every row)
+    stage_counts = (view["Lifecycle Stage"].value_counts() if "Lifecycle Stage" in view else pd.Series(dtype=int))
+    stage_counts = stage_counts[stage_counts.index != LIFECYCLE_OTHER]
+    if stage_counts.sum():
+        top_stage = str(stage_counts.index[0])
+        stage_share = round(100 * stage_counts.iloc[0] / max(len(view), 1))
     else:
-        cliff_badge = ("Safe Horizon", "green")
+        top_stage, stage_share = "—", 0
+    tenure_count = int(summary.get("known_tenure", 0))
 
     # Card 3 · Addressable friction: High or Medium preventability among assessed rows
     prev = view["Churn Preventability"].map(ec.normalize_preventability) if "Churn Preventability" in view else pd.Series(dtype=str)
@@ -2250,8 +2297,9 @@ def render_kpi_shelf(view: pd.DataFrame, summary: dict) -> None:
     cards = [
         _kpi_card("Records in view", f"{n:,}", "Total user sentiment extracted", pill=breakdown,
                   pill_short=breakdown_short),
-        _kpi_card("M10–14 Drop-off Cliff", f"{cliff_pct}%" if tenure_count else "—",
-                  f"{cliff_count} of {tenure_count} stated tenures", badge=cliff_badge),
+        _kpi_card("Critical SIP Stage", top_stage, "Primary lifecycle drop-off point",
+                  badge=(f"{stage_share}% of friction", "emerald") if stage_share else None,
+                  text_value=True, badge_below=True),
         _kpi_card("Addressable Friction", f"{addressable_pct}%" if len(assessed) else "—",
                   "High & Medium preventability cases", badge=("High UX Fix", "emerald")),
         _kpi_card("Top Churn Driver", top_driver, top_foot, text_value=True),
@@ -2259,6 +2307,16 @@ def render_kpi_shelf(view: pd.DataFrame, summary: dict) -> None:
                   badge=("Stated Duration", "emerald")),
     ]
     st.markdown(KPI_SHELF_CSS + '<div class="kpi-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
+
+
+def _life_readout(view: pd.DataFrame) -> str:
+    """Opening clause of the dashboard read-out: the lifecycle stage with the most friction."""
+    counts = view["Lifecycle Stage"].value_counts() if "Lifecycle Stage" in view else pd.Series(dtype=int)
+    counts = counts[counts.index != LIFECYCLE_OTHER]
+    if not counts.sum():
+        return ""
+    return (f"**{counts.index[0]}** is where most friction happens ({counts.iloc[0] / max(len(view), 1):.0%} of "
+            f"records in view); ")
 
 
 def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
@@ -2269,27 +2327,36 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
     tab_dash, tab_table, tab_export = st.tabs(["📊 Evaluator Dashboard", "🔎 Discovery Table", "⬇️ Export Workbook"])
 
     with tab_dash:
-        # Chart 1 — the cliff
-        ten = df["SIP Tenure (Months)"].dropna().astype(int)
-        if ten.empty:
-            st.info("No tenure is stated in the records in view, so the cliff curve cannot be drawn.")
+        # Chart 1 — friction by SIP lifecycle stage (inferred for every row, so it is never sparse)
+        life_order = LIFECYCLE_STAGES + [LIFECYCLE_OTHER]
+        life_counts = df["Lifecycle Stage"].value_counts().reindex(life_order, fill_value=0)
+        if int(life_counts.sum()) == 0:
+            st.info("No records in view, so the lifecycle chart cannot be drawn.")
         else:
-            max_m = max(24, int(ten.max()))
-            counts = ten.value_counts().reindex(range(1, max_m + 1), fill_value=0)
-            colors = [EMERALD if 10 <= m <= 14 else "#B8C4D4" for m in counts.index]
+            top_life = life_counts[LIFECYCLE_STAGES].idxmax()
+            life_share = life_counts / max(int(life_counts.sum()), 1)
+            life_driver = []
+            for stg in life_order:
+                sub = df.loc[(df["Lifecycle Stage"] == stg) & df["Problem Theme"].isin(ec.THEMES), "Problem Theme"]
+                life_driver.append(sub.value_counts().index[0] if len(sub) else "—")
+            plot_order = life_order[::-1]  # Plotly draws horizontal bars bottom-up; keep journey order top-down
+            idx = [life_order.index(x) for x in plot_order]
+            bar_colors = [EMERALD if stg == top_life else ("#CBD5E1" if stg == LIFECYCLE_OTHER else "#0F172A")
+                          for stg in plot_order]
             fig1 = go.Figure(go.Bar(
-                x=counts.index, y=counts.values, marker_color=colors,
-                hovertemplate="Month %{x}<br>%{y} churn records<extra></extra>"))
-            fig1.add_vrect(x0=9.5, x1=14.5, fillcolor=EMERALD, opacity=0.08, line_width=0,
-                           annotation_text=(f"Drop-off Cliff · {summary['cliff_share']:.0%} of stated-tenure churn"
-                                            if summary["cliff"] else
-                                            f"Drop-off Cliff · none of {summary['known_tenure']} stated tenures"),
-                           annotation_position="top left", annotation_font_color=NAVY)
-            fig1.update_layout(**PLOT_LAYOUT, height=380, bargap=0.15,
-                               title=dict(text="<b>Chart 1 · The Month 10–14 Drop-off Cliff</b><br>"
-                                               "<span style='font-size:12px;color:#5A6B82'>SIP tenure at churn vs. churn volume</span>"),
-                               xaxis=dict(title="SIP tenure at churn (months)", dtick=1 if max_m <= 36 else 3, showgrid=False),
-                               yaxis=dict(title="Churn records", gridcolor="#EEF1F5"))
+                y=plot_order, x=[int(life_counts[x]) for x in plot_order], orientation="h",
+                marker=dict(color=bar_colors, line=dict(width=0)),
+                text=[f"{int(life_counts[x]):,} · {life_share[x]:.0%}" for x in plot_order], textposition="outside",
+                cliponaxis=False,
+                customdata=[[f"{life_share[x]:.1%}", life_driver[k]] for x, k in zip(plot_order, idx)],
+                hovertemplate="<b>%{y}</b><br>%{x:,} records (%{customdata[0]} of view)"
+                              "<br>Top driver here: %{customdata[1]}<extra></extra>"))
+            fig1.update_layout(**PLOT_LAYOUT, height=380, bargap=0.35,
+                               title=dict(text="<b>Chart 1 · SIP Friction by Lifecycle Stage</b><br>"
+                                               "<span style='font-size:12px;color:#5A6B82'>Where in the SIP journey investors "
+                                               "hit friction · stage inferred from each comment · hover for the top driver</span>"),
+                               xaxis=dict(title="Records", gridcolor="#EEF1F5", range=[0, life_counts.max() * 1.22]),
+                               yaxis=dict(title="", tickfont=dict(size=13, color="#0F172A")))
             stretch(st.plotly_chart, fig1, config={"displayModeBar": False})
 
         # Chart 2 — driver breakdown (records + dominant emotion only)
@@ -2378,11 +2445,11 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
                                xaxis=dict(title="Records", gridcolor="#EEF1F5"), yaxis=dict(title=""))
             stretch(st.plotly_chart, fig6, config={"displayModeBar": False})
 
-        verdict = "above" if summary["addressable_share"] > 0.75 else "below"
+        verdict = "above" if _assessed_share > 0.75 else "below"  # same basis as the KPI card and Chart 3
         st.markdown(
-            f"**Read-out:** {summary['cliff_share']:.0%} of tenure-stated churn in view falls in months 10–14; "
-            f"**{summary['top_theme']}** is the largest driver; and {summary['addressable_share']:.0%} of records are "
-            f"addressable through product fixes, nudges or education ({verdict} the 75% hypothesis).")
+            f"**Read-out:** {_life_readout(df)}**{summary['top_theme']}** is the largest driver; and "
+            f"{_assessed_share:.0%} of assessed records are addressable through product fixes, nudges or education "
+            f"({verdict} the 75% hypothesis).")
 
     with tab_table:
         keyword = st.text_input("🔍 Search Reviews by Keyword:", placeholder="e.g., cancel, pause, bounce, xirr, ...",
