@@ -1825,19 +1825,151 @@ chat_slot = st.container()  # filled once the dataset is resolved, but rendered 
 df_master, master_info = load_master_dataset()
 df_golden, golden_file, golden_raw = load_golden_set()
 
-c1, c2, c3, c4 = st.columns(4)
-_groww_n = int((df_master["Product"] == "Groww").sum())
-_bp = master_info.get("by_platform", {})
-c1.markdown(card("Total Reviews Extracted", f"{master_info['extracted']:,}",
-                 " · ".join(f"{int(_bp.get(p, 0)):,} {p}" for p in PLATFORMS), True), unsafe_allow_html=True)
-c2.markdown(card("Product / Platform", f"{_groww_n:,} | {len(df_master) - _groww_n:,}", "Groww | Other"),
-            unsafe_allow_html=True)
-c3.markdown(card("Validated Insights Dataset", f"{0 if df_golden is None else len(df_golden):,}",
-                 "Deep-dive validated cancellation cases"), unsafe_allow_html=True)
-_years = df_master["Year"].dropna()
-c4.markdown(card("Longitudinal Span", f"{int(_years.min())} – {int(_years.max())}" if len(_years) else "—",
-                 f"Coverage across {len(_years):,} dated reviews" if len(_years) else "No Year values found"),
-            unsafe_allow_html=True)
+# =============================================================================
+# TOP METRICS SHELF — 4 uniform FinTech cards (Total Reviews · Product · Validated Insights · Longitudinal Span)
+# =============================================================================
+TOP_SHELF_CSS = """
+<style>
+.ts-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 4px 0 14px 0; }
+.ts-card { position: relative; height: 145px; box-sizing: border-box; background: #FFFFFF; border: 1px solid #EAECF0;
+           border-radius: 12px; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05); padding: 16px 18px 14px 18px;
+           container-type: inline-size;
+           display: flex; flex-direction: column; overflow: hidden; transition: all 0.2s ease; }
+.ts-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+                   background: linear-gradient(90deg, rgba(0,208,156,0) 0%, #00D09C 50%, rgba(0,208,156,0) 100%);
+                   opacity: 0; transition: opacity 0.2s ease; }
+.ts-card::after { content: ""; position: absolute; left: 10%; right: 10%; top: -30px; height: 40px; pointer-events: none;
+                  background: radial-gradient(ellipse at center, rgba(0,208,156,0.18) 0%, rgba(0,208,156,0) 70%);
+                  opacity: 0; transition: opacity 0.2s ease; }
+.ts-card.accent::before, .ts-card.accent::after, .ts-card:hover::before, .ts-card:hover::after { opacity: 1; }
+.ts-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16, 24, 40, 0.08); border-color: #D0F5EA; }
+.ts-label { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: #667085;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 16px; line-height: 16px; }
+.ts-main { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 44px; margin-top: 8px; }
+.ts-value { font-size: 30px; font-weight: 700; color: #1B365D; letter-spacing: -0.02em; line-height: 1;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ts-value .sep { color: #C0C8D4; font-weight: 500; margin: 0 4px; }
+.ts-value-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ts-icon { flex-shrink: 0; width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center;
+           justify-content: center; background: #F2F4F7; }
+.ts-icon.blue { background: #EEF4FF; } .ts-icon.green { background: rgba(0, 208, 156, 0.12); }
+.ts-pill { flex-shrink: 0; font-size: 10.5px; font-weight: 600; color: #3538CD; background: #EEF4FF;
+           border: 1px solid #C7D7FE; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.ts-mid { height: 22px; display: flex; align-items: center; margin: 6px 0 6px 0; }
+.ts-src { display: flex; gap: 6px; align-items: center; }
+.ts-src span { width: 20px; height: 20px; border-radius: 6px; background: #F2F4F7; display: inline-flex;
+               align-items: center; justify-content: center; }
+.ts-track { width: 100%; height: 8px; border-radius: 999px; background: #E4E7EC; overflow: hidden; display: flex; }
+.ts-track .seg { height: 100%; background: linear-gradient(90deg, #00D09C, #00B386); border-radius: 999px 0 0 999px; }
+.ts-spark { width: 100%; height: 18px; display: flex; align-items: flex-end; gap: 4px; }
+.ts-spark .bar { flex: 1; min-height: 2px; background: rgba(0, 208, 156, 0.35); border-radius: 3px 3px 0 0; }
+.ts-spark .bar.peak { background: #00D09C; }
+.ts-foot { margin-top: auto; font-size: 12px; color: #667085; line-height: 1.3; white-space: nowrap; overflow: hidden;
+           text-overflow: ellipsis; }
+.ts-foot b { color: #344054; font-weight: 600; }
+.ts-foot .short { display: none; }
+@container (max-width: 290px) { .ts-foot .full { display: none; } .ts-foot .short { display: inline; } .ts-value { font-size: 28px; } }
+@media (max-width: 1000px) { .ts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px)  { .ts-grid { grid-template-columns: minmax(0, 1fr); } }
+</style>
+"""
+
+# Generic line icons (no brand marks): store bag, phone, chat bubble, video, document, calendar
+_TS_SVG = {
+    "store": '<path d="M5 8h14l-1 12H6L5 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
+    "phone": '<rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/>',
+    "chat": '<path d="M4 5h16v11H9l-4 4v-4H4z"/>',
+    "video": '<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/>',
+    "doc": '<path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4"/><path d="M9.5 13l1.8 1.8L15 11"/>',
+    "calendar": '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>'
+                '<path d="M8 15l2.5-2 2 1.5L16 12"/>',
+}
+
+
+def _ts_icon(name: str, size: int = 14, color: str = "#475467") -> str:
+    return (f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" stroke="{color}" stroke-width="1.8" '
+            f'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{_TS_SVG[name]}</svg>')
+
+
+def _ts_ring(parts: list[tuple[str, int]], total: int) -> str:
+    """Micro ring showing the source mix (emerald shades), 40px."""
+    shades = ["#00D09C", "#00805F", "#7FE3C9", "#B8C4D4"]
+    r, c = 15, 2 * 3.14159 * 15
+    segs, offset = [], 0.0
+    for (name, n), col in zip(parts, shades):
+        if not total or not n:
+            continue
+        length = c * n / total
+        segs.append(f'<circle cx="20" cy="20" r="{r}" fill="none" stroke="{col}" stroke-width="5" '
+                    f'stroke-dasharray="{length:.2f} {c - length:.2f}" stroke-dashoffset="{-offset:.2f}" '
+                    f'transform="rotate(-90 20 20)"><title>{html.escape(name)}: {n:,}</title></circle>')
+        offset += length
+    return (f'<svg width="40" height="40" viewBox="0 0 40 40" style="flex-shrink:0" role="img" '
+            f'aria-label="Source mix"><circle cx="20" cy="20" r="{r}" fill="none" stroke="#EEF1F5" stroke-width="5"/>'
+            f'{"".join(segs)}</svg>')
+
+
+def render_top_shelf(master: pd.DataFrame, info: dict, golden: pd.DataFrame | None) -> None:
+    """Four headline cards above the filters, computed from the full master dataset."""
+    esc = lambda x: html.escape(str(x), quote=True)  # noqa: E731
+    total = int(info.get("extracted", len(master)))
+    bp = info.get("by_platform", {}) or {}
+    counts = [(p, int(bp.get(p, 0))) for p in PLATFORMS]
+
+    # Card 1 · Total reviews extracted
+    src_icons = "".join(f'<span title="{t}">{_ts_icon(i, 12)}</span>' for i, t in
+                        (("store", "Play Store"), ("phone", "App Store (merged into Play Store)"),
+                         ("chat", "Reddit"), ("video", "YouTube")))
+    caption1 = " · ".join(f"{n:,} {p}" for p, n in counts)
+    caption1_short = " · ".join(f"{n:,} {p.replace('Play Store', 'Play').replace('YouTube', 'YT')}" for p, n in counts)
+    card1 = (f'<div class="ts-card accent"><div class="ts-label">Total Reviews Extracted</div>'
+             f'<div class="ts-main"><span class="ts-value">{total:,}</span>{_ts_ring(counts, total)}</div>'
+             f'<div class="ts-mid"><div class="ts-src">{src_icons}</div></div>'
+             f'<div class="ts-foot" title="{esc(caption1)}"><span class="full">{esc(caption1)}</span>'
+             f'<span class="short">{esc(caption1_short)}</span></div></div>')
+
+    # Card 2 · Product split
+    groww = int((master["Product"] == "Groww").sum()) if "Product" in master else 0
+    other = max(len(master) - groww, 0)
+    pct = round(100 * groww / len(master)) if len(master) else 0
+    card2 = (f'<div class="ts-card"><div class="ts-label">Product</div>'
+             f'<div class="ts-main"><span class="ts-value" title="Groww | Other">{groww:,}<span class="sep">|</span>'
+             f'{other:,}</span></div>'
+             f'<div class="ts-mid"><div class="ts-track" title="Groww {pct}% · Other {100 - pct}%">'
+             f'<div class="seg" style="width:{pct}%"></div></div></div>'
+             f'<div class="ts-foot"><b>Groww</b> vs. Other platforms</div></div>')
+
+    # Card 3 · Validated insights (golden) dataset
+    n_gold = 0 if golden is None else len(golden)
+    card3 = (f'<div class="ts-card"><div class="ts-label">Validated Insights Dataset</div>'
+             f'<div class="ts-main"><div class="ts-value-row"><span class="ts-icon blue">{_ts_icon("doc", 18, "#3538CD")}'
+             f'</span><span class="ts-value">{n_gold:,}</span></div>'
+             f'<span class="ts-pill">AI · {n_gold:,} Golden Cases</span></div>'
+             f'<div class="ts-mid"></div>'
+             f'<div class="ts-foot">Golden Dataset</div></div>')
+
+    # Card 4 · Longitudinal span with a per-year volume sparkline
+    years = pd.to_numeric(master["Year"], errors="coerce").dropna().astype(int) if "Year" in master else pd.Series(dtype=int)
+    if len(years):
+        y0, y1 = int(years.min()), int(years.max())
+        per_year = years.value_counts().reindex(range(y0, y1 + 1), fill_value=0)
+        peak = int(per_year.max()) or 1
+        bars = "".join(f'<div class="bar{" peak" if v == peak else ""}" style="height:{max(8, round(100 * v / peak))}%" '
+                       f'title="{y}: {v:,} reviews"></div>' for y, v in per_year.items())
+        span, spark, foot4 = f"{y0} – {y1}", f'<div class="ts-spark">{bars}</div>', \
+            f"Coverage across {len(years):,} dated reviews"
+    else:
+        span, spark, foot4 = "—", "", "No Year values found"
+    card4 = (f'<div class="ts-card"><div class="ts-label">Longitudinal Span</div>'
+             f'<div class="ts-main"><div class="ts-value-row"><span class="ts-icon green">'
+             f'{_ts_icon("calendar", 18, "#00805F")}</span><span class="ts-value">{span}</span></div></div>'
+             f'<div class="ts-mid">{spark}</div>'
+             f'<div class="ts-foot" title="{esc(foot4)}">{esc(foot4)}</div></div>')
+
+    st.markdown(TOP_SHELF_CSS + f'<div class="ts-grid">{card1}{card2}{card3}{card4}</div>', unsafe_allow_html=True)
+
+
+render_top_shelf(df_master, master_info, df_golden)
 st.markdown('<div class="scope-badge">🌐 Ingested &amp; analyzed user sentiment across English, Hindi (हिन्दी), '
             'and Hinglish</div>', unsafe_allow_html=True)
 if master_info["missing"] or master_info["errors"]:
