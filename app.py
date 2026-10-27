@@ -61,6 +61,8 @@ STAGE_COLORS = {
 st.markdown(
     f"""
 <style>
+  .stApp, [data-testid="stAppViewContainer"] {{ background: #F8FAFC; }}
+  [data-testid="stHeader"] {{ background: rgba(248,250,252,0.85); }}
   .block-container {{ padding-top: 1.6rem; padding-bottom: 6rem; max-width: 1400px; }}
   .hero {{ background: linear-gradient(120deg, {NAVY} 0%, #24497A 70%, #2C5A8F 100%);
           color: #fff; border-radius: 16px; padding: 28px 32px; margin-bottom: 14px; }}
@@ -1910,6 +1912,8 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+st.markdown('<div class="scope-badge">🌐 Ingested &amp; analyzed user sentiment across English, Hindi (हिन्दी), '
+            'and Hinglish</div>', unsafe_allow_html=True)
 chat_slot = st.container()  # filled once the dataset is resolved, but rendered right here under the header
 
 df_master, master_info = load_master_dataset()
@@ -2060,20 +2064,10 @@ def render_top_shelf(master: pd.DataFrame, info: dict, golden: pd.DataFrame | No
 
 
 render_top_shelf(df_master, master_info, df_golden)
-st.markdown('<div class="scope-badge">🌐 Ingested &amp; analyzed user sentiment across English, Hindi (हिन्दी), '
-            'and Hinglish</div>', unsafe_allow_html=True)
 if master_info["missing"] or master_info["errors"]:
     st.warning("Some source files could not be loaded: "
                + ", ".join(master_info["missing"] + master_info["errors"])
                + ". Place them next to app.py; KPIs and exports use the files that loaded.")
-
-with st.expander("⚙️ Engine methodology", expanded=False):
-    m1, m2, m3, m4 = st.columns(4)
-    m1.markdown('<div class="step"><b>1 · Ingest</b><br><span>Public Play Store reviews (google-play-scraper) and public Reddit JSON search. No logins, tokens or private data.</span></div>', unsafe_allow_html=True)
-    m2.markdown('<div class="step"><b>2 · Sanitise</b><br><span>Strip handles, emails, phone, PAN, Aadhaar, UPI IDs and account-like numbers. Author names never collected.</span></div>', unsafe_allow_html=True)
-    m3.markdown('<div class="step"><b>3 · Enrich</b><br><span>Explainable weighted-lexicon NLP assigns 1 of 8 drivers, then extracts tenure, behaviour, emotion and preventability.</span></div>', unsafe_allow_html=True)
-    m4.markdown('<div class="step"><b>4 · Synthesise</b><br><span>Drop-off curve, driver sizing, preventability and stage splits, plus an Excel workbook with live formulas.</span></div>', unsafe_allow_html=True)
-    st.caption("Classifier rules live in `engine_core.THEME_KB` — every assignment can be traced to the phrases that triggered it.")
 
 # ---------------------------------------------------------------------------
 # Chat card renderer
@@ -2562,21 +2556,33 @@ EVAL_CSS = """
     background: linear-gradient(110deg, #00B386 0%, #00D09C 40%, #5EEAD4 50%, #00D09C 60%, #00B386 100%) !important;
     background-size: 200% 100% !important; animation: eval-pulse-glow 2s infinite, eval-shimmer 3.5s linear infinite; }
 .st-key-eval_cta button:hover { filter: brightness(1.05); transform: translateY(-1px); }
-.st-key-eval_close button { border-radius: 10px !important; border: 1px solid #D0D5DD !important; color: #344054 !important; }
+.st-key-eval_cta_open button, .st-key-evid_cta_open button { border-radius: 12px !important; min-height: 48px;
+    border: 1px solid #D0D5DD !important; color: #344054 !important; background: #FFFFFF !important; font-weight: 600 !important; }
+.st-key-evid_cta button { border-radius: 12px !important; min-height: 48px; font-weight: 700 !important;
+    border: 2px solid #1B365D !important; color: #1B365D !important; background: #FFFFFF !important; transition: all .2s ease; }
+.st-key-evid_cta button:hover { background: #F0F5FF !important; transform: translateY(-1px); }
+.st-key-evidence_shelf { background: #FFFFFF; border: 1px solid #EAECF0; border-radius: 14px; padding: 6px 18px 12px 18px;
+    margin: 4px 0 12px 0; box-shadow: 0 1px 3px rgba(16, 24, 40, .05); animation: shelf-in .25s ease-out; }
+@keyframes shelf-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .st-key-eval_cta button { animation: none !important; } }
 .eval-head { display: flex; align-items: center; gap: 10px; margin: 6px 0 4px 0; }
 .eval-head h3 { margin: 0; color: #0F172A; font-size: 1.35rem; }
 .eval-tag { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #00805F;
             background: rgba(0, 208, 156, .14); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
 .ins-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 12px 0 18px 0; }
-.ins-card { background: #FFFFFF; border: 1px solid #EAECF0; border-radius: 12px; padding: 14px 16px; min-height: 150px;
+.ins-card { position: relative; overflow: hidden; height: 140px; background: #FFFFFF; border: 1px solid #EAECF0; border-radius: 12px; padding: 14px 16px;
             box-shadow: 0 1px 3px rgba(16, 24, 40, .05); display: flex; flex-direction: column; box-sizing: border-box;
             transition: all .2s ease; }
+.ins-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+                   background: linear-gradient(90deg, rgba(0,208,156,0) 0%, #00D09C 50%, rgba(0,208,156,0) 100%); }
 .ins-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16, 24, 40, .08); }
-.ins-k { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #00805F; }
-.ins-v { font-size: 17px; font-weight: 700; color: #0F172A; line-height: 1.25; margin: 6px 0 6px 0; }
+.ins-k { font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: #00805F;
+          height: 14px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ins-v { font-size: 17px; font-weight: 700; color: #0F172A; line-height: 1.25; margin: 8px 0 0 0; height: 43px;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ins-v .num { color: #00805F; }
-.ins-d { font-size: 12.5px; color: #475467; line-height: 1.45; margin-top: auto; }
+.ins-d { font-size: 12.5px; color: #475467; line-height: 1.4; margin-top: auto; display: -webkit-box;
+          -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .qr { display: flex; gap: 10px; align-items: flex-start; background: #F8FAFC; border: 1px solid #E4E7EC;
       border-left: 3px solid #00D09C; border-radius: 10px; padding: 10px 14px; margin: 18px 0 4px 0; }
 .qr-tag { flex-shrink: 0; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
@@ -2675,32 +2681,41 @@ def _stage_table(df: pd.DataFrame) -> str:
             '</tr></thead><tbody>' + "".join(rows) + "</tbody></table>")
 
 
+def _assessed_emotions(view: pd.DataFrame) -> pd.Series:
+    """Emotions from validated or keyword-assessed rows only. Rows the classifier left Unclassified get a filler
+    emotion for the table, and counting those would inflate the fallback label."""
+    rows = view[view["Label Source"] != "Unclassified"] if "Label Source" in view else view
+    return rows["Investor Emotional Trigger"].map(lambda v: None if _is_missing_label(v) else str(v)).dropna()
+
+
+_EMOTION_DISPLAY = {"Fear of Penalty": "Fear of Bank Penalty", "Anxiety/Stress": "Anxiety & Stress",
+                    "Panic/Fear": "Panic & Fear"}
+
+
 def _insight_cards(df: pd.DataFrame, summary: dict, assessed_share: float) -> str:
     n = max(len(df), 1)
     stage, sn = _ev_top(df["Lifecycle Stage"], exclude=[LIFECYCLE_OTHER])
     themes = summary["themes"]
     top_t = themes.iloc[0]
     top3 = themes.head(3)
+    emo_vals = _assessed_emotions(df)
+    emo, en = _ev_top(emo_vals)
     cards = [
         ("Where it breaks", f'{_ev_esc(stage)} · <span class="num">{_ev_pct(sn, n)}</span>',
-         "The lifecycle step where most investors hit friction in this view. Fixing this flow touches the most churners."),
+         "The lifecycle step where most investors hit friction in this view."),
         ("Why they leave", f'{_ev_esc(top_t["Problem Theme"])} · <span class="num">{float(top_t["Share"]):.0%}</span>',
-         f'Top 3 drivers cover {float(top3["Share"].sum()):.0%} of records; the leading driver is mostly felt as '
+         f'Top 3 drivers cover {float(top3["Share"].sum()):.0%} of records; the leader is mostly felt as '
          f'{_ev_esc(str(top_t["Dominant Emotion"]).lower())}.'),
         ("What's fixable", f'<span class="num">{assessed_share:.0%}</span> addressable',
-         "Share of assessed cases that a product/UX fix, a FinTech nudge or investor education could prevent."),
+         "Assessed cases a product/UX fix, FinTech nudge or investor education could prevent."),
+        ("Primary emotion &amp; sentiment",
+         f'{_ev_esc(_EMOTION_DISPLAY.get(emo, emo))} · <span class="num">{_ev_pct(en, len(emo_vals))}</span>',
+         "Top psychological blocker triggering churn actions across assessed cases"),
     ]
-    g = df[df["Product"] == "Groww"] if "Product" in df else df.iloc[0:0]
-    if len(g):
-        gd, gn = _ev_top(g["Problem Theme"][g["Problem Theme"].isin(ec.THEMES)])
-        cards.append(("Groww signal", f'{_ev_esc(gd)} · <span class="num">{_ev_pct(gn, len(g))}</span>',
-                      f'Leading driver among the {len(g):,} Groww reviews in view ({_ev_pct(len(g), n)} of records).'))
-    else:
-        yrs = pd.to_numeric(df.get("Year"), errors="coerce").dropna().astype(int) if "Year" in df else pd.Series(dtype=int)
-        span = f"{yrs.min()}–{yrs.max()}" if len(yrs) else "—"
-        cards.append(("Coverage", f'{len(yrs):,} dated reviews', f"Records in view span {span}."))
     return '<div class="ins-grid">' + "".join(
-        f'<div class="ins-card"><div class="ins-k">{k}</div><div class="ins-v">{v}</div><div class="ins-d">{d}</div></div>'
+        f'<div class="ins-card"><div class="ins-k">{k}</div>'
+        f'<div class="ins-v" title="{_ev_esc(__import__("re").sub("<[^>]+>", "", v))}">{v}</div>'
+        f'<div class="ins-d" title="{_ev_esc(d)}">{d}</div></div>'
         for k, v, d in cards) + "</div>"
 
 
@@ -2708,28 +2723,38 @@ def _toggle_evaluator() -> None:
     st.session_state["eval_open"] = not st.session_state.get("eval_open", False)
 
 
-def render_evaluator_gate() -> bool:
-    """Pulsing CTA card; returns True when the evaluator dashboard should be shown."""
+def _toggle_evidence() -> None:
+    st.session_state["show_evidence_highlights"] = not st.session_state.get("show_evidence_highlights", False)
+
+
+def render_cta_bar() -> tuple[bool, bool]:
+    """Two toggles side by side: the pulsing Evaluator Dashboard CTA and the Evidence Highlights button.
+    Returns (evaluator_open, evidence_open). Both default to closed."""
     st.markdown(EVAL_CSS, unsafe_allow_html=True)
-    is_open = st.session_state.get("eval_open", False)
-    if not is_open:
-        with st.container(key="eval_gate"):
-            st.markdown('<p class="eval-gate-title">📊 Evaluator Dashboard</p><p class="eval-gate-sub">Strategic insights, '
-                        'driver scorecards and charts with a one-line Quick Read on each, for the records in view.</p>',
-                        unsafe_allow_html=True)
-            st.button("✨ Unlock Evaluator Dashboard · Deep-Dive Churn Intelligence", key="eval_cta",
-                      on_click=_toggle_evaluator, use_container_width=True)
-    return is_open
+    st.session_state.setdefault("eval_open", False)
+    st.session_state.setdefault("show_evidence_highlights", False)
+    eval_open, evid_open = st.session_state["eval_open"], st.session_state["show_evidence_highlights"]
+    with st.container(key="eval_gate"):
+        st.markdown('<p class="eval-gate-title">Deep-dive views</p><p class="eval-gate-sub">Open the Evaluator Dashboard '
+                    'for strategic insights, scorecards and charts with Quick Reads, or browse representative investor '
+                    'quotes with AI translations.</p>', unsafe_allow_html=True)
+        b1, b2 = st.columns([3, 2])
+        with b1:
+            st.button("Hide Evaluator Dashboard" if eval_open else
+                      "✨ Unlock Evaluator Dashboard · Deep-Dive Churn Intelligence",
+                      key="eval_cta_open" if eval_open else "eval_cta", on_click=_toggle_evaluator,
+                      use_container_width=True)
+        with b2:
+            st.button("Hide Evidence Highlights" if evid_open else "🔍 View Evidence Highlights & Qualitative Quotes",
+                      key="evid_cta_open" if evid_open else "evid_cta", on_click=_toggle_evidence,
+                      use_container_width=True)
+    return eval_open, evid_open
 
 
 def render_evaluator_dashboard(df: pd.DataFrame, summary: dict) -> None:
-    head_l, head_r = st.columns([5, 1])
-    with head_l:
-        st.markdown('<div class="eval-head"><h3>Evaluator Dashboard</h3><span class="eval-tag">Deep-Dive Churn '
-                    f'Intelligence</span></div><div class="tbl-sub">{len(df):,} records in view · every number below '
-                    'follows the Discovery Filters</div>', unsafe_allow_html=True)
-    with head_r:
-        st.button("Hide dashboard", key="eval_close", on_click=_toggle_evaluator, use_container_width=True)
+    st.markdown('<div class="eval-head"><h3>Evaluator Dashboard</h3><span class="eval-tag">Deep-Dive Churn '
+                f'Intelligence</span></div><div class="tbl-sub">{len(df):,} records in view · every number below '
+                'follows the Discovery Filters</div>', unsafe_allow_html=True)
 
     prev_counts = df["Churn Preventability"].value_counts().reindex(ec.PREVENTABILITY_LEVELS, fill_value=0)
     prev_counts = prev_counts[prev_counts > 0]
@@ -2835,7 +2860,7 @@ def render_evaluator_dashboard(df: pd.DataFrame, summary: dict) -> None:
     # Chart 4 — lifecycle stage × driver, Chart 5 — emotions
     stage_cross = (df[df["Problem Theme"].isin(ec.THEMES) & (df["Lifecycle Stage"] != LIFECYCLE_OTHER)]
                    .groupby(["Lifecycle Stage", "Problem Theme"]).size().reset_index(name="Records"))
-    emo = df["Investor Emotional Trigger"].dropna().astype(str).value_counts()
+    emo = _assessed_emotions(df).value_counts()
     if len(stage_cross):
         cell = stage_cross.sort_values("Records", ascending=False).iloc[0]
         txt4 = (f"The single biggest hotspot is <b>{_ev_esc(cell['Problem Theme'])}</b> during "
@@ -2891,8 +2916,11 @@ def render_dashboard(df: pd.DataFrame, summary: dict) -> None:
     render_kpi_shelf(df, summary)
     st.write("")
 
-    render_evidence(df)
-    if render_evaluator_gate():
+    eval_open, evid_open = render_cta_bar()
+    if evid_open:
+        with st.container(key="evidence_shelf"):
+            render_evidence(df)
+    if eval_open:
         render_evaluator_dashboard(df, summary)
     st.write("")
     tab_table, tab_export = st.tabs(["🔎 Discovery Table", "⬇️ Export Workbook"])
