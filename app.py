@@ -3130,7 +3130,7 @@ def render_evaluator_dashboard(df: pd.DataFrame, summary: dict) -> None:
             emo8 = emo.head(8).sort_values()
             fig6 = go.Figure(go.Bar(
                 y=emo8.index, x=emo8.values, orientation="h",
-                marker_color=[EMERALD if v == emo8.max() else "#1E293B" for v in emo8.values],
+                marker_color=_gradient_by_rank(emo8.values),
                 hovertemplate="%{y}: %{x} records<extra></extra>"))
             fig6.update_layout(**PLOT_LAYOUT, height=420,
                                title=dict(text="<b>Chart 5 · Investor emotional triggers</b><br><span style='font-size:12px;"
