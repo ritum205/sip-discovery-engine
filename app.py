@@ -2626,7 +2626,7 @@ PLOT_LAYOUT = dict(
 # =============================================================================
 KPI_SHELF_CSS = """
 <style>
-.kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin: 6px 0 18px 0; }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 6px 0 18px 0; }
 .kpi-card { height: 140px; box-sizing: border-box; background: #FFFFFF; border: 1px solid #EAECF0; border-radius: 12px;
             box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05); padding: 14px 16px; display: flex; flex-direction: column;
             transition: all 0.2s ease; position: relative; overflow: hidden; container-type: inline-size; }
@@ -2653,8 +2653,7 @@ KPI_SHELF_CSS = """
 .kpi-pill .short { display: none; }
 @container (max-width: 250px) { .kpi-pill .full { display: none; } .kpi-pill .short { display: inline; }
                                 .kpi-value { font-size: 26px; } .kpi-badge { font-size: 10px; padding: 2px 6px; } }
-@media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 700px)  { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px)  { .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 460px)  { .kpi-grid { grid-template-columns: minmax(0, 1fr); } }
 </style>
 """
@@ -2680,7 +2679,7 @@ def _kpi_card(label: str, value: str, foot: str, badge: tuple[str, str] | None =
 
 
 def render_kpi_shelf(view: pd.DataFrame, summary: dict) -> None:
-    """Five uniform KPI cards for the rows currently in view (`view` = filtered df, `summary` = ec.summarize(view))."""
+    """Four uniform KPI cards for the rows currently in view (`view` = filtered df, `summary` = ec.summarize(view))."""
     n = int(summary.get("n", len(view)))
 
     # Card 1 · Records in view, with a per-source breakdown pill
@@ -2699,11 +2698,6 @@ def render_kpi_shelf(view: pd.DataFrame, summary: dict) -> None:
         top_stage, stage_share = "—", 0
     tenure_count = int(summary.get("known_tenure", 0))
 
-    # Card 3 · Addressable friction: High or Medium preventability among assessed rows
-    prev = view["Churn Preventability"].map(ec.normalize_preventability) if "Churn Preventability" in view else pd.Series(dtype=str)
-    assessed = prev[prev.isin(ec.PREVENTABILITY_LEVELS)]
-    addressable_pct = round(100 * assessed.map(ec.is_addressable).mean()) if len(assessed) else 0
-
     # Card 4 · Top churn driver, as a share of rows that carry a problem theme
     themed = view["Problem Theme"][view["Problem Theme"].isin(ec.THEMES)] if "Problem Theme" in view else pd.Series(dtype=str)
     if len(themed):
@@ -2719,8 +2713,6 @@ def render_kpi_shelf(view: pd.DataFrame, summary: dict) -> None:
         _kpi_card("Critical SIP Stage", top_stage, "Primary lifecycle drop-off point",
                   badge=(f"{stage_share}% of friction", "emerald") if stage_share else None,
                   text_value=True, badge_below=True),
-        _kpi_card("Addressable Friction", f"{addressable_pct}%" if len(assessed) else "—",
-                  "High & Medium preventability cases", badge=("High UX Fix", "emerald")),
         _kpi_card("Top Churn Driver", top_driver, top_foot, text_value=True),
         _kpi_card("Cohort Tenures", f"{tenure_count:,}", "Available for cohort cliff curve",
                   badge=("Stated Duration", "emerald")),
